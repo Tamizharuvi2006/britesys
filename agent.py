@@ -49,12 +49,38 @@ from triage import generate_triage_note
 from trace import TraceLogger
 
 
+REQUIRED_REFERRAL_FIELDS = {
+    "referral_id", "received_at", "resident_ref",
+    "source", "summary", "requested_action", "urgency",
+}
+
+
 def load_referrals(path: str = None) -> list:
-    """Load and parse the referral queue, sorted by received_at."""
+    """Load and parse the referral queue, sorted by received_at.
+
+    Skips malformed entries with a warning instead of crashing.
+    """
     fpath = path or config.REFERRAL_QUEUE_PATH
     with open(fpath, encoding="utf-8") as f:
         raw = json.load(f)
-    referrals = [Referral(**r) for r in raw]
+
+    referrals = []
+    for i, entry in enumerate(raw):
+        # Validate required fields
+        if not isinstance(entry, dict):
+            print(f"  ⚠ Skipping referral #{i}: not a dict")
+            continue
+        missing = REQUIRED_REFERRAL_FIELDS - set(entry.keys())
+        if missing:
+            rid = entry.get("referral_id", f"#{i}")
+            print(f"  ⚠ Skipping referral {rid}: missing fields {missing}")
+            continue
+        try:
+            referrals.append(Referral(**{k: entry[k] for k in REQUIRED_REFERRAL_FIELDS}))
+        except (TypeError, ValueError) as e:
+            rid = entry.get("referral_id", f"#{i}")
+            print(f"  ⚠ Skipping referral {rid}: {e}")
+
     # Process in chronological order
     referrals.sort(key=lambda r: r.received_at)
     return referrals
@@ -135,7 +161,35 @@ def process_referral(
     """
     Process a single referral through the full workflow.
     Returns a ProcessingResult — never raises.
+
+    Any unexpected exception is caught, logged to the trace, and
+    processing continues with the next referral.
     """
+    rid = referral.referral_id
+
+    try:
+        return _process_referral_inner(
+            referral, history_client, policy_evaluator, trace,
+        )
+    except Exception as e:
+        # Catch-all: one referral crashing must not kill the batch
+        trace.error(rid, f"Unexpected error: {type(e).__name__}: {e}")
+        trace.processing_continued(rid)
+        return ProcessingResult(
+            referral_id=rid,
+            resident_ref=referral.resident_ref,
+            verdict="ERROR",
+            error=f"Unexpected error: {type(e).__name__}: {e}",
+        )
+
+
+def _process_referral_inner(
+    referral: Referral,
+    history_client: HistoryClient,
+    policy_evaluator: PolicyEvaluator,
+    trace: TraceLogger,
+) -> ProcessingResult:
+    """Inner processing logic — may raise on unexpected errors."""
     rid = referral.referral_id
 
     # Step 1: Log referral read
@@ -301,7 +355,7 @@ def main():
     referrals = load_referrals()
     print(f"\n📥 Loaded {len(referrals)} referrals from queue")
 
-    # Health check
+    # Health check (warning, not fatal — individual referrals fail gracefully)
     if not args.dry_run:
         try:
             health = history_client.health_check()
@@ -310,9 +364,9 @@ def main():
                 f"{health.get('records', '?')} residents available"
             )
         except HistoryAPIError as e:
-            print(f"✗ History API unavailable: {e}")
+            print(f"⚠ History API unavailable: {e}")
             print("  Start it with: python services/history_service.py --port 8083")
-            sys.exit(1)
+            print("  Continuing anyway — individual referrals will fail gracefully.")
 
     # Process each referral
     results = []
