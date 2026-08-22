@@ -1,0 +1,177 @@
+{
+  "restricted_actions": [
+    {
+      "section": "3.1",
+      "description": "Any change to a resident's entitlement, award amount, or eligibility status",
+      "action_patterns": [
+        "change entitlement",
+        "change award",
+        "change eligibility",
+        "alter eligibility",
+        "modify entitlement",
+        "adjust award",
+        "recalculate award",
+        "record income change",
+        "update income",
+        "change income"
+      ],
+      "summary_patterns": [
+        "change.*entitlement",
+        "change.*eligibility",
+        "alter.*award",
+        "income.*change"
+      ],
+      "keywords_in_action": ["entitlement", "eligibility", "award amount"]
+    },
+    {
+      "section": "3.2",
+      "description": "Suspension, termination, or reinstatement of an award",
+      "action_patterns": [
+        "suspend",
+        "terminate",
+        "reinstate",
+        "stop award",
+        "end award",
+        "cancel award",
+        "suspend assistance"
+      ],
+      "summary_patterns": [
+        "suspend",
+        "terminat",
+        "reinstat"
+      ],
+      "keywords_in_action": ["suspend", "terminate", "reinstate"]
+    },
+    {
+      "section": "3.3",
+      "description": "Initiation, alteration, or cancellation of a payment",
+      "action_patterns": [
+        "initiate payment",
+        "alter payment",
+        "cancel payment",
+        "issue payment",
+        "make payment",
+        "stop payment",
+        "change payment"
+      ],
+      "summary_patterns": [
+        "initiat.*payment",
+        "cancel.*payment",
+        "alter.*payment"
+      ],
+      "keywords_in_action": ["payment"]
+    },
+    {
+      "section": "3.4",
+      "description": "Any change to payment details, including bank or card details",
+      "action_patterns": [
+        "update payment details",
+        "change payment details",
+        "change bank",
+        "change account",
+        "update bank",
+        "update account",
+        "change card"
+      ],
+      "summary_patterns": [
+        "change.*account",
+        "change.*bank",
+        "change.*card",
+        "payment.*detail",
+        "update.*payment"
+      ],
+      "keywords_in_action": ["payment details", "bank", "card details", "account"]
+    },
+    {
+      "section": "3.5",
+      "description": "Any communication sent to a resident or to a third party",
+      "action_patterns": [
+        "send letter",
+        "send email",
+        "send notification",
+        "contact resident",
+        "write to resident",
+        "notify resident",
+        "send communication",
+        "draft explanatory note"
+      ],
+      "summary_patterns": [
+        "send.*letter",
+        "send.*notification",
+        "contact.*resident",
+        "write.*resident"
+      ],
+      "keywords_in_action": ["send", "notify", "contact resident", "letter"]
+    },
+    {
+      "section": "3.6",
+      "description": "Disclosure of resident information to any party outside the Department",
+      "action_patterns": [
+        "disclose",
+        "share information",
+        "release information",
+        "provide to third party",
+        "share data"
+      ],
+      "summary_patterns": [
+        "disclos",
+        "share.*information",
+        "release.*information"
+      ],
+      "keywords_in_action": ["disclose", "share information", "release"]
+    },
+    {
+      "section": "3.7",
+      "description": "Creation of a record asserting finding of fact about resident's conduct, including suspected fraud or misrepresentation",
+      "action_patterns": [
+        "record fraud",
+        "flag fraud",
+        "record misrepresentation",
+        "finding of fact",
+        "note suspected fraud",
+        "mark as fraudulent"
+      ],
+      "summary_patterns": [
+        "fraud",
+        "misrepresent",
+        "undeclared",
+        "finding.*fact",
+        "alleg"
+      ],
+      "keywords_in_action": ["fraud", "misrepresentation"]
+    },
+    {
+      "section": "3.8",
+      "description": "Any action which, once taken, cannot be reversed by the Department acting alone",
+      "action_patterns": [
+        "irreversible",
+        "permanent"
+      ],
+      "summary_patterns": [
+        "irreversible",
+        "cannot.*reverse",
+        "permanent"
+      ],
+      "keywords_in_action": []
+    }
+  ],
+  "permitted_actions": {
+    "description": "Actions under §2 that the assistant may perform without approval",
+    "patterns": [
+      "read referral",
+      "retrieve history",
+      "categorise",
+      "categorize",
+      "prioritise",
+      "prioritize",
+      "draft triage note",
+      "record triaged",
+      "flag for human attention",
+      "flag as urgent",
+      "flag for contact attempt",
+      "review household composition",
+      "review award",
+      "escalate"
+    ]
+  }
+}
