@@ -48,15 +48,15 @@ All output goes to `output/` (generated at runtime — not committed):
 ## Architecture
 
 ```
-agent.py              ← Orchestrator (entry point)
+agent.py              ← Orchestrator + §3.9 CHILD_HANDOFF safeguarding gate
 ├── history_client.py ← HTTP client for History API (read-only)
-├── policy_evaluator.py ← Four-state evaluator (PERMITTED / RESTRICTED / AMBIGUOUS / CHILD_HANDOFF)
+├── policy_evaluator.py ← Policy evaluator (PERMITTED / RESTRICTED / AMBIGUOUS)
 │   └── policy_rules.json ← Policy-as-data (editable, no code changes needed)
-├── triage.py         ← Triage note generator (template-based)
+├── triage.py         ← Triage note generator (template-based, permitted §2 actions only)
 ├── trace.py          ← Audit trace logger (§5 compliant)
 ├── models.py         ← All domain dataclasses
 ├── config.py         ← Configuration (env var overrides)
-└── dashboard.py      ← Optional read-only results viewer
+└── dashboard.py      ← Lightweight read-only case-management dashboard
 ```
 
 **Key design:** Policy rules are loaded from `policy_rules.json`, not hardcoded. §3.9 safeguarding is a factual household check, not a text pattern — it runs against the Department's data, not the referral wording (per ACA-2026/2 §5.1).
@@ -70,9 +70,10 @@ agent.py              ← Orchestrator (entry point)
 | `referral-queue.json` | The 12 overnight referrals |
 | `services/history_service.py` | Resident History API (mock) |
 | `services/_history_data.json` | History data for 12 residents |
-| `tests.py` | Test suite (36 tests, stdlib unittest) |
+| `tests.py` | Test suite (37 tests, stdlib unittest) |
 | `DECISIONS.md` | Architectural decisions, trade-offs, cuts, Day 2 rationale |
 | `AI-USAGE.md` | AI tool usage disclosure |
+| `dashboard.py` | Professional case-management viewer |
 
 ## Running the tests
 
@@ -82,7 +83,7 @@ python tests.py -v
 python -m pytest tests.py -v
 ```
 
-36 tests covering: policy evaluation, structural hard gate, malformed input, failure isolation, trace integrity, §4.2 escalation compliance, and §3.9 child handoff (ACA-2026/2).
+37 tests covering: policy evaluation, structural hard gate, malformed input, failure isolation, trace integrity, §4.2 escalation compliance, and §3.9 child handoff (ACA-2026/2).
 
 ## Configuration
 

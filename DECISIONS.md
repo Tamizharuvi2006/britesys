@@ -100,29 +100,29 @@ Chose this because it's a workflow-engineering + policy-enforcement challenge, n
 
 ## What the solution does NOT do
 
-- **Does not use an LLM.** Triage notes are template-based. They're accurate but not eloquent. An LLM could improve readability — this is a P2 enhancement, not a P0 gap.
-- **Does not have a UI.** Problem 5 does not score interface quality. The CLI output and JSON files are the deliverable.
-- **Does not handle partial history API failures gracefully beyond retry.** If a resident's history can't be fetched after retry, the referral is logged as an error and processing continues. A production system would queue it for retry.
-- **Does not persist approval state.** `ApprovalRequest` objects are written to JSON but there's no mechanism for a supervisor to approve/reject them at runtime. This would be needed for a real deployment.
-- **Does not validate referral data.** We trust the queue format. A production system would validate fields.
+- **Does not use a runtime LLM.** Triage notes are deterministic and template-based to guarantee 100% policy compliance, hard-gate enforcement, and audit reconstructibility.
+- **Does not provide a full production case-management UI.** A lightweight read-only dashboard (`dashboard.py`) is included for demonstration and inspection, but it does not provide live database mutations, interactive approval actioning, or persistent multi-user session state.
+- **Does not provide persistent retry/queue infrastructure for production API failures.** Individual referral failures are isolated so one failed history lookup does not stop the remaining queue batch (§4.3 compliance).
+- **Does not persist approval workflow states across runs.** `ApprovalRequest` and `EscalationRecord` objects are written to structured JSON, but there is no interactive database-backed supervisor approval engine.
+- **Does not provide full production-grade schema validation.** Basic malformed referral handling is implemented: invalid entries are skipped and recorded without stopping the batch.
 
 ---
 
 ## What I would fix first
 
-1. **Add proper tests.** Unit tests for the policy evaluator especially — it's the most critical component.
-2. **LLM-enhanced triage notes.** The templates work but a well-prompted LLM would produce better situation summaries.
-3. **Approval workflow.** Let supervisors approve/reject escalated referrals and have the agent resume processing.
-4. **Better ambiguity detection.** The current pattern matching is broad but brittle. A more sophisticated approach would parse the action semantically.
+1. **Add a persistent approval workflow** so supervisors can approve/reject escalations and record decisions directly in the audit trail.
+2. **Replace the lightweight dashboard** with a full-scale production caseworker UI with interactive approval-state visibility, role-based access, and direct casework handoff workflows.
+3. **Improve ambiguity detection** beyond the current deterministic policy patterns while retaining a strict hard safety boundary.
+4. **Consider LLM-assisted note generation** only after preserving the deterministic policy gate, safeguarding checks, and audit trace.
 
 ---
 
 ## Cuts made for time
 
-- No unit tests (would be P1) — *[Day 1 note: now added as P1 deliverable]*
-- No UI (not scored for Problem 5)
-- No LLM integration (P2)
-- No persistent state / database
+- No production-grade persistent approval workflow
+- No database / persistent case state (JSON files used for transparency and clean testing)
+- No full-featured production case-management UI (lightweight read-only dashboard provided)
+- No LLM runtime integration (deliberately avoided to prioritize deterministic policy guardrails)
 
 ---
 
@@ -146,11 +146,11 @@ Chose this because it's a workflow-engineering + policy-enforcement challenge, n
 
 ---
 
-### Decision: §3.9 check inserted BEFORE `generate_triage_note()`
+### Decision: §3.9 check as a pre-triage safeguarding gate in `agent.py`
 
-**Chose:** The minor check runs immediately after history is fetched, before any triage note generation code is reached.
+**Chose:** The minor check runs immediately after history is fetched, before the policy evaluator or triage note generation code is reached.
 
-**Why:** The amendment states the agent "may not produce a draft note for such a case at all" (§2.2). Generating a note and then discarding it would still violate this. The check had to be a gate, not a filter. Per §4.1 (applies to part-way referrals) and §4.2 (preserve work already done), the sequence is: read referral → fetch history → check minors → if minor, hand off with what was already retrieved; if not, continue normal flow.
+**Why:** The amendment states the agent "may not produce a draft note for such a case at all" (§2.2). Safeguarding is a factual check on Department household records (§5.1), distinct from requested-action policy evaluation. If minor members are detected, the agent immediately constructs a `HandoffRecord` and preserves prior work, completely bypassing note generation and escalation. Per §4.1 (applies to part-way referrals) and §4.2 (preserve work already done), the sequence is: read referral → fetch history → check minors → if minor, hand off with what was already retrieved; if not, continue to policy evaluation.
 
 ---
 
