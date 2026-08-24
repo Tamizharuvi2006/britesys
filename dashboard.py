@@ -96,7 +96,6 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 <title>Caseworker's Morning — Calder County</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <style>
 /* ── Reset & Global ──────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -491,11 +490,11 @@ body {
   margin-top: 1px;
 }
 
-/* Semantic Decision Banner (Compressed ~20%) */
+/* Semantic Decision Banner */
 .decision-banner {
   border-radius: var(--radius);
   border: 1px solid;
-  padding: 12px 16px;
+  padding: 14px 18px;
   margin-bottom: 14px;
   box-shadow: var(--shadow-sm);
 }
@@ -508,13 +507,13 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .banner-heading-wrap {
   display: flex;
   align-items: center;
-  gap: 7px;
-  font-size: 14.5px;
+  gap: 8px;
+  font-size: 15px;
   font-weight: 700;
 }
 .decision-banner.green  .banner-heading-wrap { color: var(--green); }
@@ -539,39 +538,49 @@ body {
 .decision-banner.violet .banner-badge { color: var(--violet); border-color: var(--violet-bdr); }
 
 .banner-message {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--text-body);
-  line-height: 1.45;
+  line-height: 1.5;
 }
 .banner-action-bar {
-  margin-top: 8px;
+  margin-top: 10px;
   display: flex;
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
 }
 .badge-no-action {
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-main);
   background: var(--surface);
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 4px;
   border: 1px solid #D0D5DD;
 }
+
+/* Policy Chips with [ §X.X ] Section Tags */
 .policy-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 3px 9px;
   border-radius: 4px;
   background: var(--surface);
   border: 1px solid;
 }
 .policy-chip.red   { color: var(--red); border-color: var(--red-bdr); }
 .policy-chip.amber { color: var(--amber); border-color: var(--amber-bdr); }
+.sec-tag {
+  font-weight: 700;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.policy-chip.red .sec-tag   { background: var(--red-bg); color: var(--red); }
+.policy-chip.amber .sec-tag { background: var(--amber-bg); color: var(--amber); }
 
 /* ── 3-Card Information Grid (Compact) ──────────────────── */
 .info-grid {
@@ -714,8 +723,8 @@ body {
   color: var(--text-body);
 }
 .check-bullet {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -866,9 +875,7 @@ body {
   <!-- ── Top Header ──────────────────────────────────────── -->
   <header class="app-header">
     <div class="header-brand">
-      <div class="header-icon">
-        <i data-lucide="scale" style="width:18px;height:18px"></i>
-      </div>
+      <div class="header-icon" id="brand-icon"></div>
       <div>
         <div class="header-title">Caseworker's Morning</div>
         <div class="header-sub">Calder County — Department of Household Services</div>
@@ -876,11 +883,11 @@ body {
     </div>
     <div class="header-actions">
       <div class="header-run" id="header-run-ts">
-        <i data-lucide="clock-3" style="width:13px;height:13px"></i>
+        <span id="clock-icon"></span>
         <span id="run-ts-text">—</span>
       </div>
       <button class="btn-refresh" onclick="location.reload()">
-        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+        <span id="refresh-icon"></span>
         <span>Refresh</span>
       </button>
     </div>
@@ -890,7 +897,7 @@ body {
   <section class="summary-bar">
     <div class="stat-cards-group" id="stat-cards"></div>
     <div class="attention-badge" id="attention-badge" style="display:none">
-      <i data-lucide="alert-triangle" style="width:13px;height:13px"></i>
+      <span id="attention-icon"></span>
       <span id="attention-text">9 cases require human attention</span>
     </div>
   </section>
@@ -915,7 +922,7 @@ body {
     <!-- Right Detail -->
     <main class="detail-panel" id="detail-panel">
       <div class="empty-placeholder">
-        <i data-lucide="file-text" style="width:40px;height:40px"></i>
+        <div id="placeholder-icon"></div>
         <p>Select a referral from the queue to view case details</p>
       </div>
     </main>
@@ -925,6 +932,38 @@ body {
 
 <script>
 const D = __DATA__;
+
+/* ── Inline Lucide SVG Generator ─────────────────────────── */
+const SVG_DEFS = {
+  'scale': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>',
+  'clock-3': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16.5 12"/></svg>',
+  'refresh-cw': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>',
+  'inbox': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>',
+  'circle-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>',
+  'shield-alert': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>',
+  'shield-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg>',
+  'triangle-alert': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
+  'user-round-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 21a8 8 0 0 1 13.292-6"/><circle cx="10" cy="8" r="5"/><path d="m16 19 2 2 4-4"/></svg>',
+  'user-round': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg>',
+  'user': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  'layers': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>',
+  'file-text': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>',
+  'history': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>',
+  'arrow-up-right': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>',
+  'arrow-right': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
+  'chevron-right': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>',
+  'chevron-down': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>',
+  'check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>',
+  'x': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+  'code': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+  'folder-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="m9 13 2 2 4-4"/></svg>',
+  'user-check': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>',
+};
+
+function ic(name, size=13, className='') {
+  const svg = SVG_DEFS[name] || SVG_DEFS['file-text'];
+  return svg.replace('<svg', `<svg width="${size}" height="${size}" class="${className}" style="display:inline-block;vertical-align:middle;flex-shrink:0;"`);
+}
 
 /* ── Formatting Utilities ────────────────────────────────── */
 const esc = s => String(s ?? '')
@@ -966,36 +1005,42 @@ function getVerdictInfo(verdict) {
     case 'CHILD_HANDOFF':
       return { label: 'Handoff', color: 'violet', icon: 'user-round-check' };
     default:
-      return { label: verdict, color: 'amber', icon: 'help-circle' };
+      return { label: verdict, color: 'amber', icon: 'file-text' };
   }
 }
 
-/* ── Render Summary Cards ────────────────────────────────── */
+/* ── Render Header & Summary Elements ─────────────────────── */
+document.getElementById('brand-icon').innerHTML = ic('scale', 18);
+document.getElementById('clock-icon').innerHTML = ic('clock-3', 13);
+document.getElementById('refresh-icon').innerHTML = ic('refresh-cw', 12);
+document.getElementById('attention-icon').innerHTML = ic('triangle-alert', 13);
+document.getElementById('placeholder-icon').innerHTML = ic('file-text', 40);
+
 const stats = D.stats || {};
 document.getElementById('stat-cards').innerHTML = `
   <div class="stat-card">
-    <div class="stat-card-icon neutral"><i data-lucide="inbox" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon neutral">${ic('inbox', 14)}</div>
     <div class="stat-card-data">
       <div class="stat-card-val">${stats.total || 0}</div>
       <div class="stat-card-lbl">Total referrals</div>
     </div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-icon green"><i data-lucide="circle-check" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon green">${ic('circle-check', 14)}</div>
     <div class="stat-card-data">
       <div class="stat-card-val" style="color:var(--green)">${stats.permitted || 0}</div>
       <div class="stat-card-lbl">Completed</div>
     </div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-icon red"><i data-lucide="shield-alert" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon red">${ic('shield-alert', 14)}</div>
     <div class="stat-card-data">
       <div class="stat-card-val" style="color:var(--red)">${stats.restricted || 0}</div>
       <div class="stat-card-lbl">Restricted</div>
     </div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-icon violet"><i data-lucide="user-round-check" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon violet">${ic('user-round-check', 14)}</div>
     <div class="stat-card-data">
       <div class="stat-card-val" style="color:var(--violet)">${stats.handoffs || 0}</div>
       <div class="stat-card-lbl">Human handoff</div>
@@ -1040,7 +1085,7 @@ D.results.forEach((r, i) => {
   row.dataset.idx = i;
   row.innerHTML = `
     <div class="row-status-icon ${vInfo.color}">
-      <i data-lucide="${vInfo.icon}" style="width:13px;height:13px"></i>
+      ${ic(vInfo.icon, 13)}
     </div>
     <div class="row-content">
       <div class="row-id-line">
@@ -1098,6 +1143,19 @@ const STEP_META = {
   error:                  { label: 'Error occurred', icon: 'shield-alert', node: 'blocked' }
 };
 
+const POLICY_TITLES = {
+  '3.1': 'Entitlement & award changes',
+  '3.2': 'Award changes & suspensions',
+  '3.3': 'Payment alterations',
+  '3.4': 'Bank & payment details',
+  '3.5': 'Third-party communications',
+  '3.6': 'Benefit code alterations',
+  '3.7': 'Findings of fact / fraud',
+  '3.8': 'Case closure without review',
+  '3.9': 'Child household safeguarding',
+  '6.1': 'Unclear / Ambiguous authority'
+};
+
 /* ── Render Selected Referral Detail ─────────────────────── */
 function selectReferral(idx) {
   currentSelectedIndex = idx;
@@ -1135,26 +1193,13 @@ function selectReferral(idx) {
     </div>
   `;
 
-  const policyDescriptions = {
-    '3.1': 'Entitlement & award changes',
-    '3.2': 'Award changes & suspensions',
-    '3.3': 'Payment alterations',
-    '3.4': 'Bank & payment details',
-    '3.5': 'Third-party communications',
-    '3.6': 'Benefit code alterations',
-    '3.7': 'Findings of conduct / fraud',
-    '3.8': 'Case closure without review',
-    '3.9': 'Child household safeguarding',
-    '6.1': 'Unclear / Ambiguous authority'
-  };
-
   /* 2. Semantic Decision Banner (Clean, Professional & Scannable) */
   if (r.verdict === 'AMBIGUOUS_ESCALATE') {
     html += `
       <div class="decision-banner amber">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="triangle-alert" style="width:16px;height:16px"></i>
+            ${ic('triangle-alert', 16)}
             <span>Needs supervisor review</span>
           </div>
           <span class="banner-badge">Ambiguous · Escalated</span>
@@ -1164,13 +1209,13 @@ function selectReferral(idx) {
         </div>
         <div class="banner-action-bar">
           <span class="badge-no-action">The agent did not perform the action.</span>
-          <span class="policy-chip amber"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
-          <span class="policy-chip amber"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §6.1 Unclear / Ambiguous authority</span>
+          <span class="policy-chip amber">${ic('clock-3', 11)} <span>Pending approval</span></span>
+          <span class="policy-chip amber"><span class="sec-tag">[ §6.1 ]</span> <span>Unclear / Ambiguous authority</span></span>
         </div>
         ${r.escalation?.reasoning ? `
-          <div style="margin-top:8px;">
+          <div style="margin-top:10px;">
             <button style="background:transparent;border:none;color:var(--amber);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';const ic=this.querySelector('.arrow-icon');if(ic)ic.style.transform=isOp?'':'rotate(90deg)';">
-              <i data-lucide="chevron-right" class="arrow-icon" style="width:12px;height:12px;transition:transform .15s;display:inline-block;"></i>
+              <span class="arrow-icon" style="display:inline-flex;align-items:center;transition:transform .15s;">${ic('chevron-right', 12)}</span>
               <span>Why was this escalated?</span>
             </button>
             <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--amber-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
@@ -1186,7 +1231,7 @@ function selectReferral(idx) {
       <div class="decision-banner red">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="shield-alert" style="width:16px;height:16px"></i>
+            ${ic('shield-alert', 16)}
             <span>Action blocked</span>
           </div>
           <span class="banner-badge">Restricted · Approval Required</span>
@@ -1196,13 +1241,13 @@ function selectReferral(idx) {
         </div>
         <div class="banner-action-bar">
           <span class="badge-no-action">The agent did not perform the action.</span>
-          <span class="policy-chip red"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
-          ${sections.map(s => `<span class="policy-chip red"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §${esc(s)} ${esc(policyDescriptions[s] || '')}</span>`).join('')}
+          <span class="policy-chip red">${ic('clock-3', 11)} <span>Pending approval</span></span>
+          ${sections.map(s => `<span class="policy-chip red"><span class="sec-tag">[ §${esc(s)} ]</span> <span>${esc(POLICY_TITLES[s] || 'Policy restriction')}</span></span>`).join('')}
         </div>
         ${r.escalation?.reasoning ? `
-          <div style="margin-top:8px;">
+          <div style="margin-top:10px;">
             <button style="background:transparent;border:none;color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';const ic=this.querySelector('.arrow-icon');if(ic)ic.style.transform=isOp?'':'rotate(90deg)';">
-              <i data-lucide="chevron-right" class="arrow-icon" style="width:12px;height:12px;transition:transform .15s;display:inline-block;"></i>
+              <span class="arrow-icon" style="display:inline-flex;align-items:center;transition:transform .15s;">${ic('chevron-right', 12)}</span>
               <span>Why was this blocked?</span>
             </button>
             <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--red-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
@@ -1217,7 +1262,7 @@ function selectReferral(idx) {
       <div class="decision-banner violet">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="user-round-check" style="width:16px;height:16px"></i>
+            ${ic('user-round-check', 16)}
             <span>Human handoff required</span>
           </div>
           <span class="banner-badge">ACA-2026/2 §3.9 Safeguarding</span>
@@ -1236,7 +1281,7 @@ function selectReferral(idx) {
       <div class="decision-banner green">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="circle-check" style="width:16px;height:16px"></i>
+            ${ic('circle-check', 16)}
             <span>Action permitted — within §2</span>
           </div>
           <span class="banner-badge">Completed · Proposal Drafted</span>
@@ -1254,7 +1299,7 @@ function selectReferral(idx) {
       <!-- RESIDENT -->
       <div class="clean-card">
         <div class="clean-card-header">
-          <i data-lucide="user" style="width:12px;height:12px"></i>
+          ${ic('user-round', 12)}
           <span>Resident</span>
         </div>
         <div class="clean-card-body">
@@ -1270,7 +1315,7 @@ function selectReferral(idx) {
       <!-- SITUATION -->
       <div class="clean-card">
         <div class="clean-card-header">
-          <i data-lucide="layers" style="width:12px;height:12px"></i>
+          ${ic('layers', 12)}
           <span>Situation</span>
         </div>
         <div class="clean-card-body">
@@ -1286,7 +1331,7 @@ function selectReferral(idx) {
       <!-- REFERRAL -->
       <div class="clean-card">
         <div class="clean-card-header">
-          <i data-lucide="file-text" style="width:12px;height:12px"></i>
+          ${ic('file-text', 12)}
           <span>Referral</span>
         </div>
         <div class="clean-card-body">
@@ -1308,12 +1353,12 @@ function selectReferral(idx) {
       <div class="clean-card" style="margin-bottom:14px">
         <div class="clean-card-header" style="cursor:pointer;justify-content:space-between;user-select:none;" onclick="const el=document.getElementById('events-drawer-${esc(r.referral_id)}');const icon=this.querySelector('.toggle-icon');const isOpen=el.style.display==='block';el.style.display=isOpen?'none':'block';icon.style.transform=isOpen?'':'rotate(180deg)';">
           <span style="display:flex;align-items:center;gap:6px">
-            <i data-lucide="history" style="width:12px;height:12px"></i>
-            <span>Case History · ${events.length} Recent Event${events.length === 1 ? '' : 's'} on Record</span>
+            ${ic('history', 12)}
+            <span>Case History · ${events.length} Event${events.length === 1 ? '' : 's'} on Record</span>
           </span>
           <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted)">
             <span>View ${events.length} events</span>
-            <i data-lucide="chevron-down" class="toggle-icon" style="width:12px;height:12px;transition:transform .2s"></i>
+            <span class="toggle-icon" style="display:inline-flex;align-items:center;transition:transform .2s">${ic('chevron-down', 12)}</span>
           </span>
         </div>
         <div id="events-drawer-${esc(r.referral_id)}" style="display:none;padding:8px 14px;background:var(--surface);border-top:1px solid var(--border);">
@@ -1355,7 +1400,7 @@ function selectReferral(idx) {
   html += `
     <div class="clean-card authority-highlight-card">
       <div class="clean-card-header">
-        <i data-lucide="shield-check" style="width:12px;height:12px;color:var(--${authorityHeaderColor})"></i>
+        <span style="display:inline-flex;color:var(--${authorityHeaderColor});">${ic('shield-check', 12)}</span>
         <span>Decision &amp; Authority</span>
       </div>
       <div class="clean-card-body">
@@ -1381,7 +1426,7 @@ function selectReferral(idx) {
   html += `
     <div class="clean-card">
       <div class="clean-card-header">
-        <i data-lucide="arrow-up-right" style="width:12px;height:12px"></i>
+        ${ic('arrow-up-right', 12)}
         <span>Next Steps</span>
       </div>
       <div class="clean-card-body">
@@ -1421,14 +1466,14 @@ function selectReferral(idx) {
     html += `
       <div class="clean-card" style="margin-bottom:14px">
         <div class="clean-card-header">
-          <i data-lucide="user-round-check" style="width:12px;height:12px;color:var(--violet)"></i>
+          <span style="display:inline-flex;color:var(--violet);">${ic('user-round-check', 12)}</span>
           <span>Child Safeguarding Review — Minors Identified</span>
         </div>
         <div class="clean-card-body">
           <div class="checklist-box">
             ${minors.map(m => `
               <div class="checklist-item">
-                <div class="check-bullet lav"><i data-lucide="user" style="width:10px;height:10px"></i></div>
+                <div class="check-bullet lav">${ic('user', 10)}</div>
                 <span><strong>${esc(m.name)}</strong> (${esc(m.relationship)}) — Age ${m.age_on_referral_date !== null ? m.age_on_referral_date : 'Under 18 (DOB ' + esc(m.date_of_birth) + ')'}</span>
               </div>
             `).join('')}
@@ -1443,15 +1488,15 @@ function selectReferral(idx) {
     html += `
       <div class="clean-card" style="margin-bottom:14px">
         <div class="clean-card-header">
-          <i data-lucide="folder-check" style="width:12px;height:12px"></i>
+          ${ic('folder-check', 12)}
           <span>Work Gathered (Preserved for Caseworker per §3.2)</span>
         </div>
         <div class="clean-card-body">
           <div class="checklist-box">
-            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Referral read &amp; logged</span></div>
-            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Resident history retrieved from database</span></div>
-            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Household composition verified</span></div>
-            <div class="checklist-item"><div class="check-bullet no"><i data-lucide="x" style="width:10px;height:10px"></i></div><span>Triage note: NOT GENERATED (§2.2 ACA-2026/2 prohibits draft note)</span></div>
+            <div class="checklist-item"><div class="check-bullet ok">${ic('check', 10)}</div><span>Referral read &amp; logged</span></div>
+            <div class="checklist-item"><div class="check-bullet ok">${ic('check', 10)}</div><span>Resident history retrieved from database</span></div>
+            <div class="checklist-item"><div class="check-bullet ok">${ic('check', 10)}</div><span>Household composition verified</span></div>
+            <div class="checklist-item"><div class="check-bullet no">${ic('x', 10)}</div><span>Triage note: NOT GENERATED (§2.2 ACA-2026/2 prohibits draft note)</span></div>
           </div>
           <div class="context-box-text" style="margin-top:8px">${esc(r.handoff.work_already_done)}</div>
         </div>
@@ -1463,7 +1508,7 @@ function selectReferral(idx) {
     html += `
       <div class="clean-card" style="margin-bottom:14px">
         <div class="clean-card-header">
-          <i data-lucide="user-check" style="width:12px;height:12px"></i>
+          ${ic('user-check', 12)}
           <span>Context for Supervisor Determination (§4.2)</span>
         </div>
         <div class="clean-card-body">
@@ -1478,7 +1523,7 @@ function selectReferral(idx) {
     html += `
       <div class="clean-card" style="margin-bottom:14px">
         <div class="clean-card-header">
-          <i data-lucide="file-check" style="width:12px;height:12px"></i>
+          ${ic('file-text', 12)}
           <span>Drafted Triage Proposal (§2.4 — Caseworker Review)</span>
         </div>
         <div class="clean-card-body">
@@ -1497,7 +1542,7 @@ function selectReferral(idx) {
   const steps = traceMap[r.referral_id] || [];
   if (steps.length > 0) {
     const timelineItems = steps.map(step => {
-      const meta = STEP_META[step.step] || { label: step.step, icon: 'circle', node: 'cont' };
+      const meta = STEP_META[step.step] || { label: step.step, icon: 'file-text', node: 'cont' };
       return `
         <div class="tl-item">
           <div class="tl-node ${meta.node}"></div>
@@ -1514,11 +1559,11 @@ function selectReferral(idx) {
       <div class="trace-card">
         <div class="trace-card-header">
           <div class="trace-heading">
-            <i data-lucide="history" style="width:13px;height:13px"></i>
+            ${ic('history', 12)}
             <span>Execution History</span>
           </div>
           <button class="btn-trace-toggle" onclick="document.getElementById('raw-trace-${esc(r.referral_id)}').classList.toggle('open')">
-            <i data-lucide="code" style="width:11px;height:11px"></i>
+            ${ic('code', 11)}
             <span>View full trace</span>
           </button>
         </div>
@@ -1537,12 +1582,10 @@ function selectReferral(idx) {
   const detailEl = document.getElementById('detail-panel');
   detailEl.innerHTML = html;
   detailEl.scrollTop = 0;
-  lucide.createIcons();
 }
 
 /* ── Initialize with First Actionable Referral ────────────── */
 window.addEventListener('DOMContentLoaded', () => {
-  lucide.createIcons();
   // Default to first item matching 'Needs action' (or index 0)
   const defaultRow = document.querySelector('.queue-row.f-action') || document.querySelector('.queue-row');
   if (defaultRow) {
