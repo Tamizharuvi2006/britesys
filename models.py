@@ -14,10 +14,13 @@ from enum import Enum
 # ---------------------------------------------------------------------------
 
 class PolicyVerdict(Enum):
-    """Three-state policy evaluation result."""
+    """Policy evaluation result — four states after ACA-2026/2."""
     PERMITTED = "PERMITTED"
     RESTRICTED = "RESTRICTED"
     AMBIGUOUS_ESCALATE = "AMBIGUOUS_ESCALATE"
+    # ACA-2026/2 §3.9: household contains person under 18.
+    # This is NOT an escalation — it is ordinary casework that a human must do.
+    CHILD_HANDOFF = "CHILD_HANDOFF"
 
 
 # ---------------------------------------------------------------------------
@@ -98,10 +101,16 @@ class PolicyDecision:
 
     @property
     def requires_escalation(self) -> bool:
+        """True for §3 hard-block escalations only (not §3.9 hand-offs)."""
         return self.verdict in (
             PolicyVerdict.RESTRICTED,
             PolicyVerdict.AMBIGUOUS_ESCALATE,
         )
+
+    @property
+    def requires_handoff(self) -> bool:
+        """True for §3.9 child-household hand-offs (ACA-2026/2)."""
+        return self.verdict == PolicyVerdict.CHILD_HANDOFF
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +130,7 @@ class TriageNote:
 
 
 # ---------------------------------------------------------------------------
-# Escalation Record (§4.2)
+# Escalation Record (§4.2) — for §3 hard-block cases
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -130,6 +139,9 @@ class EscalationRecord:
     Per §4.2: must identify the referral, state which §3 provision applies,
     and carry sufficient context for a supervisor to act without re-reading
     the case from the beginning.
+
+    Used only for RESTRICTED and AMBIGUOUS_ESCALATE verdicts.
+    NOT used for §3.9 CHILD_HANDOFF cases — those use HandoffRecord.
     """
     referral_id: str
     resident_ref: str
@@ -137,6 +149,31 @@ class EscalationRecord:
     triggered_sections: List[str]
     reasoning: str
     context_summary: str
+
+
+# ---------------------------------------------------------------------------
+# Handoff Record (ACA-2026/2 §3.9) — distinct from escalation
+# ---------------------------------------------------------------------------
+
+@dataclass
+class HandoffRecord:
+    """
+    ACA-2026/2 §3.9: household contains a person under 18.
+
+    This is NOT an escalation. An escalation says the Department must decide
+    whether an action may happen at all. A hand-off says: this is ordinary
+    casework that a human must do — the agent cannot draft a triage note
+    for this case.
+
+    Per §3.2 of ACA-2026/2: the agent must pass whatever it has already
+    established to the caseworker, so they do not repeat work already done.
+    """
+    referral_id: str
+    resident_ref: str
+    requested_action: str
+    minors_identified: List[dict]   # [{name, date_of_birth, relationship}]
+    work_already_done: str          # summary of what the agent retrieved
+    reason: str = "ACA-2026/2 §3.9 — household includes person under 18"
 
 
 # ---------------------------------------------------------------------------
@@ -166,15 +203,20 @@ class ProcessingResult:
     """Final result for a single referral."""
     referral_id: str
     resident_ref: str
-    verdict: str                        # PERMITTED / RESTRICTED / AMBIGUOUS_ESCALATE
+    verdict: str   # PERMITTED / RESTRICTED / AMBIGUOUS_ESCALATE / CHILD_HANDOFF / ERROR
     triage_note: Optional[TriageNote] = None
     escalation: Optional[EscalationRecord] = None
     approval_request: Optional[ApprovalRequest] = None
+    handoff: Optional[HandoffRecord] = None     # ACA-2026/2 §3.9
     error: Optional[str] = None
 
     @property
     def escalated(self) -> bool:
         return self.escalation is not None
+
+    @property
+    def handed_off(self) -> bool:
+        return self.handoff is not None
 
     def to_dict(self) -> dict:
         """Serialize to dict for JSON output."""
@@ -189,6 +231,8 @@ class ProcessingResult:
             d["escalation"] = asdict(self.escalation)
         if self.approval_request:
             d["approval_request"] = asdict(self.approval_request)
+        if self.handoff:
+            d["handoff"] = asdict(self.handoff)
         if self.error:
             d["error"] = self.error
         return d

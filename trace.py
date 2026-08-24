@@ -126,6 +126,26 @@ class TraceLogger:
             "Approval request created — PENDING_APPROVAL",
         )
 
+    def child_handoff_detected(
+        self, referral_id: str, minors: list,
+    ):
+        """ACA-2026/2 §3.9: minor detected in household BEFORE triage note."""
+        names = ", ".join(
+            f"{m['name']} (DOB {m['date_of_birth']})"
+            for m in minors
+        )
+        self._log(
+            referral_id, "child_handoff_detected",
+            f"ACA-2026/2 §3.9 — minor(s) in household: {names}",
+        )
+
+    def handoff_created(self, referral_id: str):
+        """ACA-2026/2 §3.9: handoff record created (NOT an escalation)."""
+        self._log(
+            referral_id, "handoff_created",
+            "Hand-off record created — ordinary casework, human caseworker required",
+        )
+
     def processing_continued(self, referral_id: str):
         self._log(referral_id, "processing_continued", "→ next referral")
 

@@ -41,6 +41,7 @@ from models import (
     PolicyVerdict,
     EscalationRecord,
     ApprovalRequest,
+    HandoffRecord,
     ProcessingResult,
 )
 from history_client import HistoryClient, HistoryAPIError
@@ -152,6 +153,90 @@ def create_approval_request(
     )
 
 
+# ---------------------------------------------------------------------------
+# ACA-2026/2 §3.9 — Safeguarding gate
+# ---------------------------------------------------------------------------
+
+REFERENCE_DATE_STR = "2026-03-17"  # The date the referrals were received
+
+
+def _age_on_reference_date(date_of_birth: str) -> int:
+    """Calculate age as of the referral date (17 March 2026)."""
+    from datetime import date
+    ref = date.fromisoformat(REFERENCE_DATE_STR)
+    dob = date.fromisoformat(date_of_birth)
+    return ref.year - dob.year - ((ref.month, ref.day) < (dob.month, dob.day))
+
+
+def check_for_minors(history: ResidentHistory) -> list:
+    """
+    ACA-2026/2 §5.1: whether a household includes a person under 18 is
+    determined from the household composition held by the Department,
+    NOT from the wording of the referral.
+
+    Returns list of minor household members as dicts, empty if none.
+    """
+    minors = []
+    for member in history.household:
+        try:
+            age = _age_on_reference_date(member.date_of_birth)
+            if age < 18:
+                minors.append({
+                    "name": member.name,
+                    "date_of_birth": member.date_of_birth,
+                    "relationship": member.relationship,
+                    "age_on_referral_date": age,
+                })
+        except (ValueError, AttributeError):
+            # ACA-2026/2 §5.2: if DOB cannot be parsed, treat §3.9 as applying
+            minors.append({
+                "name": getattr(member, "name", "Unknown"),
+                "date_of_birth": getattr(member, "date_of_birth", "unknown"),
+                "relationship": getattr(member, "relationship", "unknown"),
+                "age_on_referral_date": None,
+                "note": "DOB could not be established — §3.9 applied per §6.1",
+            })
+    return minors
+
+
+def create_handoff_record(
+    referral: Referral,
+    history: ResidentHistory,
+    minors: list,
+) -> HandoffRecord:
+    """
+    ACA-2026/2 §3.2: hand-off must carry whatever the agent has already
+    established, so the caseworker does not repeat that work.
+    """
+    work_done = (
+        f"Resident: {history.resident_ref} ({history.status}, "
+        f"£{history.award_monthly}/month, {history.benefit_code}, "
+        f"District: {history.district}).\n"
+        f"Household size: {len(history.household)} member(s).\n"
+        f"Minor(s): "
+        + ", ".join(
+            f"{m['name']} aged {m['age_on_referral_date']}"
+            for m in minors
+        )
+        + ".\n"
+        f"Recent events: {len(history.events)} case event(s) on record.\n"
+        f"Source of referral: {referral.source}. Urgency: {referral.urgency}.\n"
+        f"Summary: {referral.summary}"
+    )
+    return HandoffRecord(
+        referral_id=referral.referral_id,
+        resident_ref=referral.resident_ref,
+        requested_action=referral.requested_action,
+        minors_identified=minors,
+        work_already_done=work_done,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Core referral processing
+# ---------------------------------------------------------------------------
+
+
 def process_referral(
     referral: Referral,
     history_client: HistoryClient,
@@ -216,18 +301,36 @@ def _process_referral_inner(
             error=f"History API error: {e}",
         )
 
-    # Step 3: Evaluate against policy
+    # Step 3 (NEW — ACA-2026/2 §3.9): Check for minors BEFORE drafting triage note.
+    # Per §4.1: applies to any referral not yet triaged, including part-way through.
+    # Per §4.2: if work already begun, preserve it and hand to caseworker.
+    minors = check_for_minors(history)
+    if minors:
+        trace.child_handoff_detected(rid, minors)
+        handoff = create_handoff_record(referral, history, minors)
+        trace.handoff_created(rid)
+        # §2.2 of ACA-2026/2: agent must NOT produce a draft note at all.
+        # §3.3: this is NOT an escalation — no approval request, no §4.2 escalation record.
+        trace.processing_continued(rid)
+        return ProcessingResult(
+            referral_id=rid,
+            resident_ref=referral.resident_ref,
+            verdict=PolicyVerdict.CHILD_HANDOFF.value,
+            handoff=handoff,
+        )
+
+    # Step 4: Evaluate against authority policy (only reached if no minors)
     decision = policy_evaluator.evaluate(referral)
     trace.policy_evaluated(
         rid, decision.verdict.value,
         decision.triggered_sections, decision.reasoning,
     )
 
-    # Step 4: Draft triage note (always — even for restricted actions)
+    # Step 5: Draft triage note (always for non-handoff — even for restricted actions)
     triage_note = generate_triage_note(referral, history, decision)
     trace.triage_drafted(rid)
 
-    # Step 5: Act based on verdict
+    # Step 6: Act based on verdict
     if decision.is_permitted:
         # PERMITTED — action within §2
         trace.action_permitted(rid, referral.requested_action)
@@ -281,12 +384,19 @@ def write_outputs(results: list, trace: TraceLogger, output_dir: str = None):
         )
     print(f"\n📄 Results written to {results_path}")
 
-    # escalations.json — just the escalated referrals
+    # escalations.json — just the escalated referrals (§3 hard blocks)
     escalated = [r.to_dict() for r in results if r.escalated]
     escalations_path = os.path.join(out, "escalations.json")
     with open(escalations_path, "w", encoding="utf-8") as f:
         json.dump(escalated, f, indent=2, ensure_ascii=False)
     print(f"🔒 Escalations written to {escalations_path}")
+
+    # handoffs.json — ACA-2026/2 §3.9 child-household hand-offs
+    handed_off = [r.to_dict() for r in results if r.handed_off]
+    handoffs_path = os.path.join(out, "handoffs.json")
+    with open(handoffs_path, "w", encoding="utf-8") as f:
+        json.dump(handed_off, f, indent=2, ensure_ascii=False)
+    print(f"👶 Handoffs written to {handoffs_path}")
 
     # trace.json
     trace.save(out)
@@ -298,6 +408,7 @@ def print_summary(results: list):
     permitted = sum(1 for r in results if r.verdict == "PERMITTED")
     restricted = sum(1 for r in results if r.verdict == "RESTRICTED")
     ambiguous = sum(1 for r in results if r.verdict == "AMBIGUOUS_ESCALATE")
+    handoffs = sum(1 for r in results if r.verdict == "CHILD_HANDOFF")
     errors = sum(1 for r in results if r.verdict == "ERROR")
 
     print("\n" + "=" * 60)
@@ -307,6 +418,7 @@ def print_summary(results: list):
     print(f"  ✓ Permitted:      {permitted}")
     print(f"  🔒 Restricted:     {restricted}")
     print(f"  ⚠ Ambiguous:      {ambiguous}")
+    print(f"  👶 Handoff (§3.9):  {handoffs}")
     if errors:
         print(f"  ✗ Errors:         {errors}")
     print("=" * 60)
@@ -319,6 +431,16 @@ def print_summary(results: list):
                     f"§{s}" for s in r.escalation.triggered_sections
                 )
                 print(f"    {r.referral_id} — {sections} — {r.escalation.requested_action}")
+
+    if handoffs > 0:
+        print("\n  Handoff referrals (ACA-2026/2 §3.9):")
+        for r in results:
+            if r.handed_off:
+                minor_names = ", ".join(
+                    f"{m['name']} (age {m['age_on_referral_date']})"
+                    for m in r.handoff.minors_identified
+                )
+                print(f"    {r.referral_id} — minor(s): {minor_names}")
 
     print()
 
