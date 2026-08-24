@@ -24,7 +24,14 @@ import unittest
 from unittest.mock import patch
 
 # Ensure project is importable
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJ_DIR = os.path.dirname(TESTS_DIR)
+SRC_DIR = os.path.join(PROJ_DIR, "src")
+
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+if PROJ_DIR not in sys.path:
+    sys.path.insert(0, PROJ_DIR)
 
 from models import (
     Referral, ResidentHistory, PolicyVerdict, ProcessingResult, HandoffRecord,
@@ -32,9 +39,6 @@ from models import (
 from policy_evaluator import PolicyEvaluator
 from trace import TraceLogger
 from triage import generate_triage_note
-
-
-PROJ_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def _make_referral(**overrides) -> Referral:
@@ -208,7 +212,7 @@ class TestStructuralHardGate(unittest.TestCase):
     def test_no_forbidden_function_names(self):
         """No function in the codebase matches a forbidden capability."""
         for fname in self.AGENT_FILES:
-            fpath = os.path.join(PROJ_DIR, fname)
+            fpath = os.path.join(SRC_DIR, fname)
             with open(fpath, encoding='utf-8') as f:
                 tree = ast.parse(f.read())
             for node in ast.walk(tree):
@@ -221,7 +225,7 @@ class TestStructuralHardGate(unittest.TestCase):
 
     def test_history_client_read_only(self):
         """history_client.py only exposes GET methods."""
-        fpath = os.path.join(PROJ_DIR, 'history_client.py')
+        fpath = os.path.join(SRC_DIR, 'history_client.py')
         with open(fpath, encoding='utf-8') as f:
             source = f.read()
         self.assertIn('def _get', source)
@@ -233,7 +237,7 @@ class TestStructuralHardGate(unittest.TestCase):
     def test_no_http_write_methods(self):
         """No POST/PUT/PATCH/DELETE anywhere in agent code."""
         for fname in self.AGENT_FILES:
-            fpath = os.path.join(PROJ_DIR, fname)
+            fpath = os.path.join(SRC_DIR, fname)
             with open(fpath, encoding='utf-8') as f:
                 source = f.read().lower()
             for method in ['post', 'put', 'patch', 'delete']:
@@ -244,7 +248,7 @@ class TestStructuralHardGate(unittest.TestCase):
 
     def test_agent_never_approves(self):
         """agent.py never sets approval to APPROVED or REJECTED."""
-        fpath = os.path.join(PROJ_DIR, 'agent.py')
+        fpath = os.path.join(SRC_DIR, 'agent.py')
         with open(fpath, encoding='utf-8') as f:
             source = f.read()
         # PENDING_APPROVAL is OK, but bare APPROVED/REJECTED is not

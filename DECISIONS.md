@@ -20,7 +20,7 @@ Chose this because it's a workflow-engineering + policy-enforcement challenge, n
 
 **Rejected (for now):** LLM-based triage note generation. The P0 requirement is a **correct, traceable, policy-compliant** workflow. An LLM can improve note quality later, but if the guardrails fail, nothing else matters.
 
-**Why:** Python stdlib only (as specified). Clean-clone setup = `python agent.py`. No dependencies, no virtual environment, no install step.
+**Why:** Python stdlib only (as specified). Clean-clone setup = `python src/agent.py`. No dependencies, no virtual environment, no install step.
 
 ---
 

@@ -18,8 +18,11 @@ if hasattr(sys.stdout, "reconfigure"):
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUTPUT = os.path.join(HERE, "output")
+DASH_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(DASH_DIR)
+OUTPUT = os.path.join(REPO_ROOT, "output")
+DATA_DIR = os.path.join(REPO_ROOT, "data")
+SERVICES_DIR = os.path.join(REPO_ROOT, "services")
 
 
 def load_json(path):
@@ -35,8 +38,8 @@ def load_json(path):
 def build_html():
     results = load_json(os.path.join(OUTPUT, "results.json")) or []
     trace = load_json(os.path.join(OUTPUT, "trace.json")) or []
-    queue = load_json(os.path.join(HERE, "referral-queue.json")) or []
-    history_data = load_json(os.path.join(HERE, "services", "_history_data.json")) or {}
+    queue = load_json(os.path.join(DATA_DIR, "referral-queue.json")) or []
+    history_data = load_json(os.path.join(SERVICES_DIR, "_history_data.json")) or {}
 
     total = len(results)
     permitted = sum(1 for r in results if r.get("verdict") == "PERMITTED")

@@ -13,10 +13,10 @@ An automated casework assistant that processes overnight referrals, fetches resi
 python services/history_service.py --port 8083
 
 # 2. Run the agent (in another terminal)
-python agent.py
+python src/agent.py
 
 # 3. Optional: view results in the dashboard
-python dashboard.py
+python dashboard/dashboard.py
 # → http://127.0.0.1:8080
 ```
 
@@ -24,10 +24,10 @@ Results appear in `output/` automatically.
 
 ## What it does
 
-1. **Reads** 12 overnight referrals from `referral-queue.json`
+1. **Reads** 12 overnight referrals from `data/referral-queue.json`
 2. **Fetches** each resident's history from the History API
 3. **Checks household composition** — if any member is under 18, the referral is handed off to a human caseworker immediately, before any triage note is generated (ACA-2026/2 §3.9)
-4. **Evaluates** every requested action against `authority-policy.md` (loaded as structured data from `policy_rules.json`)
+4. **Evaluates** every requested action against `authority-policy.md` (loaded as structured data from `src/policy_rules.json`)
 5. **Drafts** a triage note for caseworker review (§2.4 — proposal only)
 6. **Hard-blocks** any action that falls under §3 — the agent creates an escalation record and approval request but **cannot execute the action**
 7. **Applies §6.1** — ambiguous actions are treated as restricted
@@ -45,42 +45,54 @@ All output goes to `output/` (generated at runtime — not committed):
 | `handoffs.json` | ACA-2026/2 §3.9 hand-offs — child households routed to caseworker |
 | `trace.json` | Full audit trace — every step, every decision, reconstructable per §5 |
 
-## Architecture
+## Project Structure
 
 ```
-agent.py              ← Orchestrator + §3.9 CHILD_HANDOFF safeguarding gate
-├── history_client.py ← HTTP client for History API (read-only)
-├── policy_evaluator.py ← Policy evaluator (PERMITTED / RESTRICTED / AMBIGUOUS)
-│   └── policy_rules.json ← Policy-as-data (editable, no code changes needed)
-├── triage.py         ← Triage note generator (template-based, permitted §2 actions only)
-├── trace.py          ← Audit trace logger (§5 compliant)
-├── models.py         ← All domain dataclasses
-├── config.py         ← Configuration (env var overrides)
-└── dashboard.py      ← Lightweight read-only case-management dashboard
+britesys/
+├── README.md                 ← Documentation & run instructions
+├── PROBLEM.md                ← Original problem statement
+├── DECISIONS.md              ← Architectural decisions, trade-offs & Day 2 log
+├── AI-USAGE.md               ← AI tool usage disclosure
+├── authority-policy.md       ← Authority policy ACA-2026/1
+│
+├── src/                      ← Core triage application
+│   ├── agent.py              ← Pipeline orchestrator + §3.9 safeguarding gate
+│   ├── models.py             ← Domain dataclasses & verdict enums
+│   ├── config.py             ← Environment configuration & path resolutions
+│   ├── history_client.py     ← Read-only History API client
+│   ├── policy_evaluator.py   ← 3-state authority evaluator (§2, §3, §6.1)
+│   ├── policy_rules.json     ← Policy-as-data (provisions & matchers)
+│   ├── triage.py             ← Triage note generator (permitted §2 only)
+│   └── trace.py              ← Audit trace logger (§5 compliant)
+│
+├── services/                 ← Resident History service
+│   ├── history_service.py    ← Mock HTTP service (port 8083)
+│   └── _history_data.json    ← Resident database records
+│
+├── dashboard/                ← Case-management viewer
+│   └── dashboard.py          ← Zero-dependency light-theme UI (port 8080)
+│
+├── tests/                    ← Test suite
+│   └── tests.py              ← 37 unit tests (unittest / pytest)
+│
+├── data/                     ← Input data
+│   └── referral-queue.json   ← Overnight test referrals (12 cases)
+│
+└── output/                   ← Generated at runtime (gitignored)
+    ├── results.json
+    ├── escalations.json
+    ├── handoffs.json
+    └── trace.json
 ```
 
-**Key design:** Policy rules are loaded from `policy_rules.json`, not hardcoded. §3.9 safeguarding is a factual household check, not a text pattern — it runs against the Department's data, not the referral wording (per ACA-2026/2 §5.1).
-
-## Project files
-
-| File | Purpose |
-|---|---|
-| `PROBLEM.md` | Original problem statement |
-| `authority-policy.md` | Authority policy ACA-2026/1 |
-| `referral-queue.json` | The 12 overnight referrals |
-| `services/history_service.py` | Resident History API (mock) |
-| `services/_history_data.json` | History data for 12 residents |
-| `tests.py` | Test suite (37 tests, stdlib unittest) |
-| `DECISIONS.md` | Architectural decisions, trade-offs, cuts, Day 2 rationale |
-| `AI-USAGE.md` | AI tool usage disclosure |
-| `dashboard.py` | Professional case-management viewer |
+**Key design:** Policy rules are loaded from `src/policy_rules.json`, not hardcoded. §3.9 safeguarding is a factual household check, not a text pattern — it runs against the Department's data, not the referral wording (per ACA-2026/2 §5.1).
 
 ## Running the tests
 
 ```bash
-python tests.py -v
+python tests/tests.py -v
 # or
-python -m pytest tests.py -v
+python -m pytest tests/tests.py -v
 ```
 
 37 tests covering: policy evaluation, structural hard gate, malformed input, failure isolation, trace integrity, §4.2 escalation compliance, and §3.9 child handoff (ACA-2026/2).

@@ -34,6 +34,10 @@ import os
 import sys
 from datetime import datetime, timezone
 
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
 import config
 from models import (
     Referral,
