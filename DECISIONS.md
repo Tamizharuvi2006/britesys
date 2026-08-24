@@ -172,8 +172,18 @@ Chose this because it's a workflow-engineering + policy-enforcement challenge, n
 
 ---
 
+### Decision: No triage note drafted for Restricted or Ambiguous actions
+
+**Chose:** When an action is RESTRICTED (§3) or AMBIGUOUS (§6.1), the agent hard-blocks execution, drafts an `EscalationRecord` and `ApprovalRequest`, and sets `triage_note = None`.
+
+**Rejected:** Generating a triage note with "CANNOT PROCEED" text for blocked actions.
+
+**Why:** If policy explicitly prevents the agent from executing a requested action without supervisor approval, the agent must not generate a completed triage note for that action. Producing a draft note for an unauthorized action contradicts the structural hard gate and creates ambiguity about whether the action was performed. The agent's output for restricted cases is solely the escalation package for the supervisor.
+
+---
+
 ### What we would do differently
 
 - The reference date (`2026-03-17`) is currently hardcoded. In a real system it would come from the referral's `received_at` field or a system clock, not a constant.
 - The test for `test_handoff_record_carries_prior_work` is messier than it should be because of the mock setup. A dedicated test fixture would be cleaner.
-- If time allowed: update the dashboard UI to show CHILD_HANDOFF referrals with their own visual treatment.
+

@@ -442,6 +442,19 @@ class TestEscalationCompliance(unittest.TestCase):
             self.assertTrue(len(esc['context_summary']) > 50,
                             f"Context too short for supervisor")
 
+    def test_restricted_referrals_have_no_triage_note(self):
+        """Restricted actions cannot be performed; agent must not produce a draft triage note."""
+        if not os.path.exists(os.path.join(PROJ_DIR, 'output', 'results.json')):
+            self.skipTest("No output/results.json — run agent first")
+
+        results = json.load(
+            open(os.path.join(PROJ_DIR, 'output', 'results.json'), encoding='utf-8')
+        )
+        for r in results:
+            if r['verdict'] in ('RESTRICTED', 'AMBIGUOUS_ESCALATE'):
+                self.assertIsNone(r.get('triage_note'),
+                                  f"Referral {r['referral_id']} is {r['verdict']}; triage_note must be None")
+
 # =========================================================================
 # 7. ACA-2026/2 §3.9 — Child Household Handoff Tests
 # =========================================================================

@@ -326,13 +326,11 @@ def _process_referral_inner(
         decision.triggered_sections, decision.reasoning,
     )
 
-    # Step 5: Draft triage note (always for non-handoff — even for restricted actions)
-    triage_note = generate_triage_note(referral, history, decision)
-    trace.triage_drafted(rid)
-
-    # Step 6: Act based on verdict
+    # Step 5: Act based on verdict
     if decision.is_permitted:
-        # PERMITTED — action within §2
+        # PERMITTED — action within §2: draft triage proposal for caseworker
+        triage_note = generate_triage_note(referral, history, decision)
+        trace.triage_drafted(rid)
         trace.action_permitted(rid, referral.requested_action)
         trace.processing_continued(rid)
         return ProcessingResult(
@@ -342,7 +340,7 @@ def _process_referral_inner(
             triage_note=triage_note,
         )
     else:
-        # RESTRICTED or AMBIGUOUS_ESCALATE — hard block
+        # RESTRICTED or AMBIGUOUS_ESCALATE — hard block (do not draft triage note)
         trace.action_blocked(
             rid, referral.requested_action, decision.triggered_sections,
         )
@@ -364,7 +362,7 @@ def _process_referral_inner(
             referral_id=rid,
             resident_ref=referral.resident_ref,
             verdict=decision.verdict.value,
-            triage_note=triage_note,
+            triage_note=None,
             escalation=escalation,
             approval_request=approval,
         )

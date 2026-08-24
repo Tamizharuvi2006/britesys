@@ -67,6 +67,7 @@ def build_html():
             "award_monthly": h_item.get("award_monthly", 0.0),
             "household": h_item.get("household", []),
             "events_count": len(h_item.get("events", [])),
+            "events": h_item.get("events", []),
         }
         enriched_results.append(enriched)
 
@@ -1265,6 +1266,36 @@ function selectReferral(idx) {
       </div>
     </div>
   `;
+
+  /* Case History (Expandable Recent Events) */
+  const events = h.events || [];
+  if (events.length > 0) {
+    html += `
+      <div class="clean-card" style="margin-bottom:14px">
+        <div class="clean-card-header" style="cursor:pointer;justify-content:space-between;user-select:none;" onclick="const el=document.getElementById('events-drawer-${esc(r.referral_id)}');const icon=this.querySelector('.toggle-icon');const isOpen=el.style.display==='block';el.style.display=isOpen?'none':'block';icon.style.transform=isOpen?'':'rotate(180deg)';">
+          <span style="display:flex;align-items:center;gap:6px">
+            <i data-lucide="history" style="width:12px;height:12px"></i>
+            <span>Case History · ${events.length} Recent Event${events.length === 1 ? '' : 's'} on Record</span>
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted)">
+            <span>View ${events.length} events</span>
+            <i data-lucide="chevron-down" class="toggle-icon" style="width:12px;height:12px;transition:transform .2s"></i>
+          </span>
+        </div>
+        <div id="events-drawer-${esc(r.referral_id)}" style="display:none;padding:8px 14px;background:var(--surface);border-top:1px solid var(--border);">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            ${events.map(e => `
+              <div style="display:flex;align-items:baseline;gap:12px;padding:5px 0;border-bottom:1px solid var(--border-sub);font-size:12px;">
+                <span style="font-variant-numeric:tabular-nums;color:var(--text-muted);font-weight:500;min-width:78px;flex-shrink:0;">${esc(e.date)}</span>
+                <span style="font-weight:600;color:var(--text-main);min-width:140px;flex-shrink:0;">${esc(e.type)}</span>
+                <span style="color:var(--text-body);flex:1;">${esc(e.detail)}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+  }
 
   /* 4. Decision & Authority Highlight Section */
   html += `<div class="action-grid">`;
