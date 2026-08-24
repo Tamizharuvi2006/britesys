@@ -119,7 +119,61 @@ Chose this because it's a workflow-engineering + policy-enforcement challenge, n
 
 ## Cuts made for time
 
-- No unit tests (would be P1)
+- No unit tests (would be P1) — *[Day 1 note: now added as P1 deliverable]*
 - No UI (not scored for Problem 5)
 - No LLM integration (P2)
 - No persistent state / database
+
+---
+
+## Day 2
+
+### Amendment ACA-2026/2 — Policy §3.9: Child Household Safeguarding
+
+**What changed:** The organizers added §3.9: the agent may not draft a triage note for any referral where the household includes a person under 18. This applies immediately, including to referrals part-way through processing.
+
+**Impact on our data:** 3 of the 12 referrals are affected (RF-2026-0412, RF-2026-0416, RF-2026-0418). All three previously produced normal PERMITTED triage notes. They now become `CHILD_HANDOFF`.
+
+---
+
+### Decision: Add `CHILD_HANDOFF` verdict — do not reuse `RESTRICTED`
+
+**Chose:** A new `PolicyVerdict.CHILD_HANDOFF` value and a new `HandoffRecord` dataclass.
+
+**Rejected:** Reusing `EscalationRecord` or treating §3.9 as another restricted case.
+
+**Why:** The amendment is explicit that a hand-off is distinguishable from an escalation. An escalation says "the Department must decide whether this may happen at all." A hand-off says "this is ordinary casework that a human must do." Collapsing them into one record type would violate the letter of the amendment and confuse supervisors reviewing the output.
+
+---
+
+### Decision: §3.9 check inserted BEFORE `generate_triage_note()`
+
+**Chose:** The minor check runs immediately after history is fetched, before any triage note generation code is reached.
+
+**Why:** The amendment states the agent "may not produce a draft note for such a case at all" (§2.2). Generating a note and then discarding it would still violate this. The check had to be a gate, not a filter. Per §4.1 (applies to part-way referrals) and §4.2 (preserve work already done), the sequence is: read referral → fetch history → check minors → if minor, hand off with what was already retrieved; if not, continue normal flow.
+
+---
+
+### Decision: Age determined from household DOB vs. referral date, not from referral text
+
+**Chose:** Calculate age from `date_of_birth` in the Department's household record against 17 March 2026 (the date the referrals were received), per §5.1 of the amendment.
+
+**Rejected:** Reading "child" mentions from the referral summary text.
+
+**Why:** The amendment is explicit: "determined from the household composition held by the Department, not from the wording of the referral." We also handled the edge case from §5.2 — if a DOB cannot be parsed, treat §3.9 as applying (conservative, matches the fallback to §6.1 principle).
+
+---
+
+### Decision: `handoffs.json` as a separate output file
+
+**Chose:** Write `handoffs.json` alongside `escalations.json` and `results.json`.
+
+**Why:** Hand-offs must be visibly distinguishable from escalations in the output. A caseworker or supervisor picking up the handoffs file should immediately see these are §3.9 cases — ordinary work requiring a human — not §3 authority blocks requiring a Department approval decision.
+
+---
+
+### What we would do differently
+
+- The reference date (`2026-03-17`) is currently hardcoded. In a real system it would come from the referral's `received_at` field or a system clock, not a constant.
+- The test for `test_handoff_record_carries_prior_work` is messier than it should be because of the mock setup. A dedicated test fixture would be cleaner.
+- If time allowed: update the dashboard UI to show CHILD_HANDOFF referrals with their own visual treatment.
