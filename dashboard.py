@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Calder County — Caseworker's Morning Dashboard
+Professional Light-Theme Case Management Interface
 Read-only viewer for agent output files. No business logic.
 
 Usage:
@@ -21,616 +22,1468 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT = os.path.join(HERE, "output")
 
 
-def load_json(filename):
-    path = os.path.join(OUTPUT, filename)
+def load_json(path):
     if not os.path.exists(path):
         return None
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
 
 
 def build_html():
-    results   = load_json("results.json")   or []
-    escalations = load_json("escalations.json") or []
-    trace     = load_json("trace.json")     or []
-    handoffs  = load_json("handoffs.json")  or []
+    results = load_json(os.path.join(OUTPUT, "results.json")) or []
+    trace = load_json(os.path.join(OUTPUT, "trace.json")) or []
+    queue = load_json(os.path.join(HERE, "referral-queue.json")) or []
+    history_data = load_json(os.path.join(HERE, "services", "_history_data.json")) or {}
 
-    total     = len(results)
-    permitted = sum(1 for r in results if r["verdict"] == "PERMITTED")
-    restricted= sum(1 for r in results if r["verdict"] == "RESTRICTED")
-    ambiguous = sum(1 for r in results if r["verdict"] == "AMBIGUOUS_ESCALATE")
-    handoff_n = sum(1 for r in results if r["verdict"] == "CHILD_HANDOFF")
+    total = len(results)
+    permitted = sum(1 for r in results if r.get("verdict") == "PERMITTED")
+    restricted = sum(1 for r in results if r.get("verdict") == "RESTRICTED")
+    ambiguous = sum(1 for r in results if r.get("verdict") == "AMBIGUOUS_ESCALATE")
+    handoffs = sum(1 for r in results if r.get("verdict") == "CHILD_HANDOFF")
+    needs_action = restricted + ambiguous + handoffs
 
     run_ts = trace[0]["timestamp"] if trace else ""
 
-    data = json.dumps({
-        "results": results,
+    # Map queue by referral_id
+    queue_map = {q.get("referral_id"): q for q in queue}
+
+    # Enrich results with queue & history information for complete case-management views
+    enriched_results = []
+    for r in results:
+        rid = r.get("referral_id")
+        rref = r.get("resident_ref")
+        q_item = queue_map.get(rid, {})
+        h_item = history_data.get(rref, {})
+
+        enriched = dict(r)
+        enriched["queue_meta"] = q_item
+        enriched["history_meta"] = {
+            "status": h_item.get("status", "Unknown"),
+            "benefit_code": h_item.get("benefit_code", "N/A"),
+            "district": h_item.get("district", "N/A"),
+            "award_monthly": h_item.get("award_monthly", 0.0),
+            "household": h_item.get("household", []),
+            "events_count": len(h_item.get("events", [])),
+        }
+        enriched_results.append(enriched)
+
+    payload = json.dumps({
+        "results": enriched_results,
         "trace": trace,
         "stats": {
-            "total": total, "permitted": permitted,
-            "restricted": restricted, "ambiguous": ambiguous,
-            "handoffs": handoff_n,
+            "total": total,
+            "permitted": permitted,
+            "restricted": restricted,
+            "ambiguous": ambiguous,
+            "handoffs": handoffs,
+            "needs_action": needs_action,
         },
         "run_ts": run_ts,
     }, ensure_ascii=False)
 
-    return HTML.replace("__DATA__", data)
+    return HTML_TEMPLATE.replace("__DATA__", payload)
 
 
-HTML = r"""<!DOCTYPE html>
+HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Caseworker's Morning</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Caseworker's Morning — Calder County</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
 <style>
-/* ─── Reset ─────────────────────────────────────────────── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+/* ── Reset & Global ──────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ─── Design tokens ─────────────────────────────────────── */
-:root{
-  --bg:          #08090c;
-  --surface:     #0e1015;
-  --glass:       rgba(255,255,255,0.035);
-  --glass-border:rgba(255,255,255,0.07);
-  --glass-hover: rgba(255,255,255,0.06);
+:root {
+  --bg:          #F7F8FA;
+  --surface:     #FFFFFF;
+  --surface-sub: #F9FAFB;
+  --border:      #E4E7EC;
+  --border-sub:  #F2F4F7;
 
-  --text:        #e8eaf0;
-  --text-dim:    #5c6070;
-  --text-mid:    #8890a4;
+  --text-main:   #172033;
+  --text-body:   #344054;
+  --text-muted:  #667085;
+  --text-sub:    #98A2B3;
 
-  --green:       #34c97b;
-  --green-dim:   rgba(52,201,123,0.10);
-  --green-line:  rgba(52,201,123,0.22);
+  --primary:     #3157A6;
+  --primary-bg:  #EEF4FF;
+  --primary-bdr: #C7D7FE;
 
-  --red:         #e05c5c;
-  --red-dim:     rgba(224,92,92,0.10);
-  --red-line:    rgba(224,92,92,0.22);
+  --green:       #16845B;
+  --green-bg:    #F0FDF4;
+  --green-bdr:   #BBF7D0;
 
-  --amber:       #e8a838;
-  --amber-dim:   rgba(232,168,56,0.10);
-  --amber-line:  rgba(232,168,56,0.22);
+  --red:         #C93636;
+  --red-bg:      #FEF2F2;
+  --red-bdr:     #FECACA;
 
-  --purple:      #a47de8;
-  --purple-dim:  rgba(164,125,232,0.10);
-  --purple-line: rgba(164,125,232,0.22);
+  --amber:       #B7791F;
+  --amber-bg:    #FFFBEB;
+  --amber-bdr:   #FDE68A;
 
-  --accent:      #5b7fff;
-  --accent-dim:  rgba(91,127,255,0.12);
-  --accent-line: rgba(91,127,255,0.24);
+  --violet:      #7057C8;
+  --violet-bg:   #F5F3FF;
+  --violet-bdr:  #DDD6FE;
 
-  --radius:      14px;
-  --radius-sm:   9px;
-  --ease:        cubic-bezier(.16,1,.3,1);
+  --radius:      8px;
+  --radius-sm:   6px;
+  --shadow-sm:   0 1px 2px rgba(16, 24, 40, 0.04);
 }
 
-body{
-  font-family:'Inter',system-ui,sans-serif;
-  background:var(--bg);
-  color:var(--text);
-  min-height:100vh;
-  -webkit-font-smoothing:antialiased;
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text-main);
+  height: 100vh;
+  overflow: hidden;
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ─── Scrollbar ──────────────────────────────────────────── */
-::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:2px}
+/* ── Scrollbars ─────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D0D5DD; border-radius: 3px; }
 
-/* ─── Layout ─────────────────────────────────────────────── */
-.root{display:grid;grid-template-rows:auto 1fr;height:100vh}
-
-/* ─── Topbar ─────────────────────────────────────────────── */
-.topbar{
-  border-bottom:1px solid var(--glass-border);
-  background:var(--surface);
-  padding:16px 28px;
-  display:flex;align-items:center;justify-content:space-between;
-  gap:16px;
-}
-.topbar-left{display:flex;align-items:center;gap:14px}
-.logo{
-  width:36px;height:36px;
-  background:var(--accent-dim);
-  border:1px solid var(--accent-line);
-  border-radius:10px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:16px;flex-shrink:0;
-}
-.title h1{font-size:15px;font-weight:600;letter-spacing:-.2px}
-.title p{font-size:12px;color:var(--text-dim);margin-top:1px}
-
-.stat-pills{display:flex;gap:8px;flex-wrap:wrap}
-.pill{
-  display:flex;align-items:center;gap:6px;
-  padding:5px 12px;border-radius:20px;
-  font-size:12px;font-weight:500;
-  border:1px solid;
-}
-.pill.green {background:var(--green-dim); border-color:var(--green-line); color:var(--green)}
-.pill.red   {background:var(--red-dim);   border-color:var(--red-line);   color:var(--red)}
-.pill.amber {background:var(--amber-dim); border-color:var(--amber-line); color:var(--amber)}
-.pill.purple{background:var(--purple-dim);border-color:var(--purple-line);color:var(--purple)}
-.pill.blue  {background:var(--accent-dim);border-color:var(--accent-line);color:var(--accent)}
-.pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
-
-.run-ts{font-size:11px;color:var(--text-dim);flex-shrink:0}
-
-/* ─── Body split ─────────────────────────────────────────── */
-.body{display:grid;grid-template-columns:300px 1fr;overflow:hidden}
-
-/* ─── Sidebar ────────────────────────────────────────────── */
-.sidebar{
-  background:var(--surface);
-  border-right:1px solid var(--glass-border);
-  display:flex;flex-direction:column;
-  overflow:hidden;
-}
-.sidebar-head{
-  padding:14px 16px 10px;
-  font-size:10px;font-weight:600;letter-spacing:.8px;
-  text-transform:uppercase;color:var(--text-dim);
-  border-bottom:1px solid var(--glass-border);
-}
-.list{overflow-y:auto;flex:1}
-
-.item{
-  padding:13px 16px;
-  border-bottom:1px solid rgba(255,255,255,0.04);
-  cursor:pointer;
-  display:flex;align-items:flex-start;gap:11px;
-  transition:background .15s;
-  border-left:2px solid transparent;
-}
-.item:hover{background:var(--glass-hover)}
-.item.active{
-  background:var(--accent-dim);
-  border-left-color:var(--accent);
+/* ── App Shell ──────────────────────────────────────────── */
+.app-shell {
+  display: grid;
+  grid-template-rows: 56px auto 1fr;
+  height: 100vh;
+  overflow: hidden;
 }
 
-.item-icon{
-  width:28px;height:28px;border-radius:8px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:12px;flex-shrink:0;margin-top:1px;
-  border:1px solid;
+/* ── Top Header ─────────────────────────────────────────── */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
-.item-icon.green {background:var(--green-dim); border-color:var(--green-line)}
-.item-icon.red   {background:var(--red-dim);   border-color:var(--red-line)}
-.item-icon.amber {background:var(--amber-dim); border-color:var(--amber-line)}
-.item-icon.purple{background:var(--purple-dim);border-color:var(--purple-line)}
-
-.item-body{flex:1;min-width:0}
-.item-id{font-size:12px;font-weight:600;color:var(--text)}
-.item-action{
-  font-size:11px;color:var(--text-dim);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-  margin-top:2px;
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
-.item-badge{
-  font-size:9px;font-weight:600;
-  padding:2px 7px;border-radius:8px;
-  border:1px solid;letter-spacing:.3px;
-  margin-top:5px;display:inline-block;text-transform:uppercase;
+.header-icon {
+  width: 32px;
+  height: 32px;
+  background: var(--primary-bg);
+  border: 1px solid var(--primary-bdr);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
 }
-.item-badge.green {background:var(--green-dim); border-color:var(--green-line); color:var(--green)}
-.item-badge.red   {background:var(--red-dim);   border-color:var(--red-line);   color:var(--red)}
-.item-badge.amber {background:var(--amber-dim); border-color:var(--amber-line); color:var(--amber)}
-.item-badge.purple{background:var(--purple-dim);border-color:var(--purple-line);color:var(--purple)}
-
-/* ─── Detail pane ────────────────────────────────────────── */
-.detail{overflow-y:auto;padding:28px 32px}
-
-.empty{
-  height:100%;display:flex;flex-direction:column;
-  align-items:center;justify-content:center;gap:12px;
-  color:var(--text-dim);
+.header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-main);
+  letter-spacing: -0.2px;
 }
-.empty-icon{font-size:40px;opacity:.3}
-.empty p{font-size:14px}
-
-/* Detail header */
-.dh{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px}
-.dh-icon{
-  width:48px;height:48px;border-radius:14px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:22px;border:1px solid;flex-shrink:0;
+.header-sub {
+  font-size: 12px;
+  color: var(--text-muted);
 }
-.dh-icon.green {background:var(--green-dim); border-color:var(--green-line)}
-.dh-icon.red   {background:var(--red-dim);   border-color:var(--red-line)}
-.dh-icon.amber {background:var(--amber-dim); border-color:var(--amber-line)}
-.dh-icon.purple{background:var(--purple-dim);border-color:var(--purple-line)}
-
-.dh-text h2{font-size:22px;font-weight:700;letter-spacing:-.4px}
-.dh-text .meta{font-size:13px;color:var(--text-dim);margin-top:3px}
-
-/* Alert banners */
-.alert{
-  border-radius:var(--radius-sm);
-  padding:14px 16px;
-  margin-bottom:16px;
-  border:1px solid;
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
-.alert.red   {background:var(--red-dim);   border-color:var(--red-line)}
-.alert.amber {background:var(--amber-dim); border-color:var(--amber-line)}
-.alert.purple{background:var(--purple-dim);border-color:var(--purple-line)}
-.alert.green {background:var(--green-dim); border-color:var(--green-line)}
-
-.alert-title{
-  font-size:13px;font-weight:600;margin-bottom:5px;
-  display:flex;align-items:center;gap:8px;
+.header-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
 }
-.alert.red    .alert-title{color:var(--red)}
-.alert.amber  .alert-title{color:var(--amber)}
-.alert.purple .alert-title{color:var(--purple)}
-.alert.green  .alert-title{color:var(--green)}
-
-.alert-body{font-size:13px;color:var(--text-mid);line-height:1.65}
-
-/* Approval badge */
-.approval{
-  display:inline-flex;align-items:center;gap:6px;
-  background:var(--red-dim);border:1px solid var(--red-line);
-  color:var(--red);
-  padding:5px 12px;border-radius:20px;
-  font-size:11px;font-weight:600;letter-spacing:.3px;
-  margin-bottom:16px;
+.btn-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-body);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.15s ease;
+}
+.btn-refresh:hover {
+  background: var(--surface-sub);
+  color: var(--text-main);
+  border-color: #D0D5DD;
 }
 
-/* Glass cards */
-.card{
-  background:var(--glass);
-  border:1px solid var(--glass-border);
-  border-radius:var(--radius);
-  margin-bottom:14px;
-  overflow:hidden;
+/* ── Summary Stat Bar ───────────────────────────────────── */
+.summary-bar {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
 }
-.card-head{
-  padding:11px 16px;
-  font-size:10px;font-weight:600;letter-spacing:.7px;text-transform:uppercase;
-  color:var(--text-dim);
-  border-bottom:1px solid var(--glass-border);
-  background:rgba(255,255,255,0.018);
+.stat-cards-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.card-body{padding:14px 16px}
-.card-body pre{
-  font-family:'Inter',monospace;
-  font-size:12.5px;line-height:1.75;
-  white-space:pre-wrap;word-break:break-word;
-  color:var(--text);
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  min-width: 125px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.stat-card-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat-card-icon.neutral { background: var(--border-sub); color: var(--text-muted); }
+.stat-card-icon.green   { background: var(--green-bg); color: var(--green); }
+.stat-card-icon.red     { background: var(--red-bg); color: var(--red); }
+.stat-card-icon.violet  { background: var(--violet-bg); color: var(--violet); }
+
+.stat-card-data { display: flex; flex-direction: column; }
+.stat-card-val {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.1;
+}
+.stat-card-lbl {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 1px;
 }
 
-/* Checklist */
-.checklist{display:flex;flex-direction:column;gap:7px}
-.check-row{display:flex;align-items:center;gap:10px;font-size:13px}
-.check-row .ck{
-  width:18px;height:18px;border-radius:5px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:10px;flex-shrink:0;
-}
-.ck.ok   {background:var(--green-dim);border:1px solid var(--green-line);color:var(--green)}
-.ck.skip {background:var(--red-dim);  border:1px solid var(--red-line);  color:var(--red)}
-.ck.pass {background:var(--purple-dim);border:1px solid var(--purple-line);color:var(--purple)}
-
-/* Policy tags */
-.policy-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
-.ptag{
-  font-size:11px;font-weight:600;
-  padding:3px 10px;border-radius:6px;
-  background:var(--red-dim);border:1px solid var(--red-line);color:var(--red);
+.attention-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  background: var(--amber-bg);
+  border: 1px solid var(--amber-bdr);
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  white-space: nowrap;
 }
 
-/* Trace timeline */
-.timeline{position:relative;padding-left:22px}
-.timeline::before{
-  content:'';position:absolute;left:6px;top:8px;bottom:8px;
-  width:1px;background:var(--glass-border);
+/* ── Main Workspace Layout ──────────────────────────────── */
+.workspace {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  overflow: hidden;
+  height: 100%;
 }
-.trow{position:relative;padding:5px 0 5px 14px;font-size:12.5px}
-.trow::before{
-  content:'';position:absolute;left:-16px;top:12px;
-  width:8px;height:8px;border-radius:50%;
-  background:var(--surface);border:1px solid var(--glass-border);
+
+/* ── Left Referral Queue ────────────────────────────────── */
+.queue-panel {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
-.trow.t-read::before   {border-color:var(--accent); background:var(--accent-dim)}
-.trow.t-ok::before     {border-color:var(--green);  background:var(--green-dim)}
-.trow.t-block::before  {border-color:var(--red);    background:var(--red-dim)}
-.trow.t-handoff::before{border-color:var(--purple); background:var(--purple-dim)}
-.trow.t-warn::before   {border-color:var(--amber);  background:var(--amber-dim)}
-.trow.t-cont::before   {border-color:var(--text-dim);background:var(--glass)}
+.queue-header-area {
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border-sub);
+}
+.queue-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
 
-.step-name{font-weight:500;color:var(--text)}
-.step-detail{color:var(--text-dim);margin-left:4px}
-.step-ts{display:block;font-size:10px;color:var(--text-dim);opacity:.5;margin-top:1px}
+/* Filter Tabs */
+.filter-tabs {
+  display: flex;
+  background: var(--border-sub);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+.filter-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 5px 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.12s ease;
+}
+.filter-tab:hover {
+  color: var(--text-main);
+}
+.filter-tab.active {
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+}
 
-/* Divider */
-.divider{height:1px;background:var(--glass-border);margin:20px 0}
+/* Queue Item List */
+.queue-items {
+  overflow-y: auto;
+  flex: 1;
+}
+.queue-row {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-sub);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-left: 3px solid transparent;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.queue-row:hover {
+  background: var(--bg);
+}
+.queue-row.selected {
+  background: #EEF4FF;
+  border-left: 3px solid #3157A6;
+}
+.queue-row.selected .row-id {
+  color: #3157A6;
+}
+.queue-row.hidden {
+  display: none;
+}
+
+.row-status-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.row-status-icon.green  { background: var(--green-bg); color: var(--green); }
+.row-status-icon.red    { background: var(--red-bg); color: var(--red); }
+.row-status-icon.amber  { background: var(--amber-bg); color: var(--amber); }
+.row-status-icon.violet { background: var(--violet-bg); color: var(--violet); }
+
+.row-content {
+  flex: 1;
+  min-width: 0;
+}
+.row-id-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.row-id {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.row-action {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+.row-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-top: 3px;
+  border: 1px solid transparent;
+}
+.row-tag.green  { background: var(--green-bg); border-color: var(--green-bdr); color: var(--green); }
+.row-tag.red    { background: var(--red-bg); border-color: var(--red-bdr); color: var(--red); }
+.row-tag.amber  { background: var(--amber-bg); border-color: var(--amber-bdr); color: var(--amber); }
+.row-tag.violet { background: var(--violet-bg); border-color: var(--violet-bdr); color: var(--violet); }
+
+/* ── Right Selected Case Detail Area ────────────────────── */
+.detail-panel {
+  overflow-y: auto;
+  padding: 20px 28px;
+  background: var(--bg);
+}
+
+.empty-placeholder {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-sub);
+}
+.empty-placeholder svg {
+  opacity: 0.5;
+}
+
+/* Selected Case Header */
+.case-header-block {
+  margin-bottom: 14px;
+}
+.case-meta-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.case-meta-line strong {
+  color: var(--text-main);
+  font-weight: 600;
+}
+.case-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-main);
+  letter-spacing: -0.3px;
+}
+.case-subtitle {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+/* Semantic Decision Banner (Compressed ~20%) */
+.decision-banner {
+  border-radius: var(--radius);
+  border: 1px solid;
+  padding: 12px 16px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.decision-banner.green  { background: var(--green-bg); border-color: var(--green-bdr); }
+.decision-banner.red    { background: var(--red-bg); border-color: var(--red-bdr); }
+.decision-banner.amber  { background: var(--amber-bg); border-color: var(--amber-bdr); }
+.decision-banner.violet { background: var(--violet-bg); border-color: var(--violet-bdr); }
+
+.banner-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.banner-heading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.decision-banner.green  .banner-heading-wrap { color: var(--green); }
+.decision-banner.red    .banner-heading-wrap { color: var(--red); }
+.decision-banner.amber  .banner-heading-wrap { color: var(--amber); }
+.decision-banner.violet .banner-heading-wrap { color: var(--violet); }
+
+.banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid;
+}
+.decision-banner.green  .banner-badge { color: var(--green); border-color: var(--green-bdr); }
+.decision-banner.red    .banner-badge { color: var(--red); border-color: var(--red-bdr); }
+.decision-banner.amber  .banner-badge { color: var(--amber); border-color: var(--amber-bdr); }
+.decision-banner.violet .banner-badge { color: var(--violet); border-color: var(--violet-bdr); }
+
+.banner-message {
+  font-size: 13px;
+  color: var(--text-body);
+  line-height: 1.45;
+}
+.banner-action-bar {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.badge-no-action {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-main);
+  background: var(--surface);
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #D0D5DD;
+}
+.policy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid;
+}
+.policy-chip.red   { color: var(--red); border-color: var(--red-bdr); }
+.policy-chip.amber { color: var(--amber); border-color: var(--amber-bdr); }
+
+/* ── 3-Card Information Grid (Compact) ──────────────────── */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 14px;
+}
+@media (max-width: 1050px) {
+  .info-grid { grid-template-columns: 1fr; }
+}
+
+.clean-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.clean-card-header {
+  padding: 8px 12px;
+  background: var(--surface-sub);
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.clean-card-body {
+  padding: 10px 12px;
+}
+
+/* Key-Value Pair Layout */
+.kv-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.kv-item {
+  display: flex;
+  flex-direction: column;
+}
+.kv-label {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+.kv-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-top: 1px;
+}
+.kv-value.muted {
+  font-weight: 400;
+  color: var(--text-body);
+}
+
+/* ── Decision & Authority Highlight Section ─────────────── */
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+@media (max-width: 900px) {
+  .action-grid { grid-template-columns: 1fr; }
+}
+
+.authority-highlight-card {
+  border-left: 3px solid var(--primary);
+}
+.guardrail-box {
+  background: var(--surface-sub);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-top: 6px;
+}
+.guardrail-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.guardrail-statement {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-top: 1px;
+}
+
+/* Steps List */
+.steps-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-body);
+}
+.step-num {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--border-sub);
+  border: 1px solid var(--border);
+  color: var(--text-main);
+  font-size: 10.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* Work Gathered Checklist */
+.checklist-box {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-body);
+}
+.check-bullet {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.check-bullet.ok  { background: var(--green-bg); color: var(--green); }
+.check-bullet.no  { background: var(--red-bg); color: var(--red); }
+.check-bullet.lav { background: var(--violet-bg); color: var(--violet); }
+
+/* Formatted Context Box */
+.context-box-text {
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-body);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--surface-sub);
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+/* ── Execution History Timeline ─────────────────────────── */
+.trace-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+.trace-card-header {
+  padding: 8px 14px;
+  background: var(--surface-sub);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.trace-heading {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-trace-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-trace-toggle:hover {
+  background: var(--surface);
+  color: var(--text-main);
+}
+
+.timeline-body {
+  padding: 12px 16px;
+  position: relative;
+}
+.audit-timeline {
+  position: relative;
+  padding-left: 24px;
+}
+.audit-timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: var(--border);
+}
+.tl-item {
+  position: relative;
+  padding: 5px 0 5px 10px;
+}
+.tl-node {
+  position: absolute;
+  left: -20px;
+  top: 8px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 2px solid var(--border);
+}
+.tl-node.read    { border-color: var(--primary); background: var(--primary-bg); }
+.tl-node.ok      { border-color: var(--green); background: var(--green-bg); }
+.tl-node.blocked { border-color: var(--red); background: var(--red-bg); }
+.tl-node.warn    { border-color: var(--amber); background: var(--amber-bg); }
+.tl-node.handoff { border-color: var(--violet); background: var(--violet-bg); }
+.tl-node.cont    { border-color: var(--text-sub); }
+
+.tl-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tl-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+.tl-timestamp {
+  font-size: 10.5px;
+  color: var(--text-sub);
+  font-variant-numeric: tabular-nums;
+}
+.tl-desc {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.json-trace-drawer {
+  display: none;
+  background: #111827;
+  color: #F3F4F6;
+  font-family: monospace;
+  font-size: 11px;
+  padding: 10px 14px;
+  max-height: 220px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+.json-trace-drawer.open {
+  display: block;
+}
 </style>
 </head>
 <body>
-<div class="root">
+<div class="app-shell">
 
-<!-- TOPBAR -->
-<header class="topbar">
-  <div class="topbar-left">
-    <div class="logo">⚖</div>
-    <div class="title">
-      <h1>Caseworker's Morning</h1>
-      <p>Referral Triage Agent — Problem 5 · Brite Spark 2026</p>
+  <!-- ── Top Header ──────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="header-brand">
+      <div class="header-icon">
+        <i data-lucide="scale" style="width:18px;height:18px"></i>
+      </div>
+      <div>
+        <div class="header-title">Caseworker's Morning</div>
+        <div class="header-sub">Calder County — Department of Household Services</div>
+      </div>
     </div>
+    <div class="header-actions">
+      <div class="header-run" id="header-run-ts">
+        <i data-lucide="clock-3" style="width:13px;height:13px"></i>
+        <span id="run-ts-text">—</span>
+      </div>
+      <button class="btn-refresh" onclick="location.reload()">
+        <i data-lucide="refresh-cw" style="width:12px;height:12px"></i>
+        <span>Refresh</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- ── Summary Bar ──────────────────────────────────────── -->
+  <section class="summary-bar">
+    <div class="stat-cards-group" id="stat-cards"></div>
+    <div class="attention-badge" id="attention-badge" style="display:none">
+      <i data-lucide="alert-triangle" style="width:13px;height:13px"></i>
+      <span id="attention-text">9 cases require human attention</span>
+    </div>
+  </section>
+
+  <!-- ── Main Workspace ──────────────────────────────────── -->
+  <div class="workspace">
+
+    <!-- Left Queue -->
+    <aside class="queue-panel">
+      <div class="queue-header-area">
+        <div class="queue-heading">Referral Queue</div>
+        <div class="filter-tabs" id="filter-tabs">
+          <button class="filter-tab active" data-filter="action">Needs action</button>
+          <button class="filter-tab" data-filter="all">All</button>
+          <button class="filter-tab" data-filter="done">Completed</button>
+          <button class="filter-tab" data-filter="hand">Handoff</button>
+        </div>
+      </div>
+      <div class="queue-items" id="queue-list"></div>
+    </aside>
+
+    <!-- Right Detail -->
+    <main class="detail-panel" id="detail-panel">
+      <div class="empty-placeholder">
+        <i data-lucide="file-text" style="width:40px;height:40px"></i>
+        <p>Select a referral from the queue to view case details</p>
+      </div>
+    </main>
+
   </div>
-  <div class="stat-pills" id="pills"></div>
-  <div class="run-ts" id="run-ts"></div>
-</header>
-
-<!-- BODY -->
-<div class="body">
-
-  <!-- SIDEBAR -->
-  <nav class="sidebar">
-    <div class="sidebar-head">Referral Queue</div>
-    <div class="list" id="list"></div>
-  </nav>
-
-  <!-- DETAIL -->
-  <main class="detail" id="detail">
-    <div class="empty">
-      <div class="empty-icon">📋</div>
-      <p>Select a referral to view details</p>
-    </div>
-  </main>
-
-</div>
 </div>
 
 <script>
 const D = __DATA__;
 
-/* ── helpers ───────────────────────────────────────────── */
-function vc(verdict){
-  if(verdict==='PERMITTED')         return 'green';
-  if(verdict==='RESTRICTED')        return 'red';
-  if(verdict==='AMBIGUOUS_ESCALATE')return 'amber';
-  if(verdict==='CHILD_HANDOFF')     return 'purple';
-  return 'blue';
-}
-function vi(verdict){
-  if(verdict==='PERMITTED')         return '✓';
-  if(verdict==='RESTRICTED')        return '🔒';
-  if(verdict==='AMBIGUOUS_ESCALATE')return '⚠';
-  if(verdict==='CHILD_HANDOFF')     return '👶';
-  return '?';
-}
-function vl(verdict){
-  if(verdict==='PERMITTED')         return 'Permitted';
-  if(verdict==='RESTRICTED')        return 'Restricted';
-  if(verdict==='AMBIGUOUS_ESCALATE')return 'Escalated';
-  if(verdict==='CHILD_HANDOFF')     return 'Handoff';
-  return verdict;
-}
-function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+/* ── Formatting Utilities ────────────────────────────────── */
+const esc = s => String(s ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;');
 
-/* ── pills ─────────────────────────────────────────────── */
-const s = D.stats;
-document.getElementById('pills').innerHTML = `
-  <div class="pill blue"><span class="dot"></span>${s.total} Total</div>
-  <div class="pill green"><span class="dot"></span>${s.permitted} Permitted</div>
-  <div class="pill red"><span class="dot"></span>${s.restricted} Restricted</div>
-  <div class="pill amber"><span class="dot"></span>${s.ambiguous} Ambiguous</div>
-  <div class="pill purple"><span class="dot"></span>${s.handoffs} Handoff</div>
+function formatTime(isoStr) {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch {
+    return isoStr;
+  }
+}
+
+function formatDate(isoStr) {
+  if (!isoStr) return '—';
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleString([], {
+      day: 'numeric', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    });
+  } catch {
+    return isoStr;
+  }
+}
+
+function getVerdictInfo(verdict) {
+  switch(verdict) {
+    case 'PERMITTED':
+      return { label: 'Completed', color: 'green', icon: 'check-circle-2' };
+    case 'RESTRICTED':
+      return { label: 'Restricted', color: 'red', icon: 'lock-keyhole' };
+    case 'AMBIGUOUS_ESCALATE':
+      return { label: 'Needs review', color: 'amber', icon: 'alert-triangle' };
+    case 'CHILD_HANDOFF':
+      return { label: 'Handoff', color: 'violet', icon: 'user-round-check' };
+    default:
+      return { label: verdict, color: 'amber', icon: 'help-circle' };
+  }
+}
+
+/* ── Render Summary Cards ────────────────────────────────── */
+const stats = D.stats || {};
+document.getElementById('stat-cards').innerHTML = `
+  <div class="stat-card">
+    <div class="stat-card-icon neutral"><i data-lucide="inbox" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-data">
+      <div class="stat-card-val">${stats.total || 0}</div>
+      <div class="stat-card-lbl">Total referrals</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon green"><i data-lucide="check-circle-2" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-data">
+      <div class="stat-card-val" style="color:var(--green)">${stats.permitted || 0}</div>
+      <div class="stat-card-lbl">Completed</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon red"><i data-lucide="lock-keyhole" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-data">
+      <div class="stat-card-val" style="color:var(--red)">${stats.restricted || 0}</div>
+      <div class="stat-card-lbl">Restricted</div>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-card-icon violet"><i data-lucide="user-round-check" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-data">
+      <div class="stat-card-val" style="color:var(--violet)">${stats.handoffs || 0}</div>
+      <div class="stat-card-lbl">Human handoff</div>
+    </div>
+  </div>
 `;
-if(D.run_ts){
-  document.getElementById('run-ts').textContent =
-    'Run: ' + new Date(D.run_ts).toLocaleString();
+
+if (D.run_ts) {
+  document.getElementById('run-ts-text').textContent = 'Last run ' + formatDate(D.run_ts);
 }
 
-/* ── trace index ───────────────────────────────────────── */
+if (stats.needs_action > 0) {
+  const badge = document.getElementById('attention-badge');
+  document.getElementById('attention-text').textContent = `${stats.needs_action} cases require human attention`;
+  badge.style.display = 'inline-flex';
+}
+
+/* ── Trace Mapping ───────────────────────────────────────── */
 const traceMap = {};
-D.trace.forEach(t=>{
-  if(!traceMap[t.referral_id]) traceMap[t.referral_id]=[];
-  traceMap[t.referral_id].push(t);
+(D.trace || []).forEach(t => {
+  const rid = t.referral_id;
+  if (!traceMap[rid]) traceMap[rid] = [];
+  traceMap[rid].push(t);
 });
 
-/* ── sidebar ───────────────────────────────────────────── */
-const list = document.getElementById('list');
-D.results.forEach((r,i)=>{
-  const c = vc(r.verdict);
-  const tn = r.triage_note||{};
-  // Extract action from referral_context or fallback
-  let action = '';
-  if(tn.referral_context){
-    const m = tn.referral_context.match(/Requested action:\s*(.+)/);
-    if(m) action = m[1].trim();
-  }
-  if(!action && r.handoff) action = r.handoff.requested_action||'';
+/* ── Queue Population ────────────────────────────────────── */
+const qListEl = document.getElementById('queue-list');
+let currentSelectedIndex = -1;
 
-  const el = document.createElement('div');
-  el.className='item';
-  el.dataset.idx=i;
-  el.innerHTML=`
-    <div class="item-icon ${c}">${vi(r.verdict)}</div>
-    <div class="item-body">
-      <div class="item-id">${r.referral_id}</div>
-      <div class="item-action">${esc(action||r.verdict)}</div>
-      <span class="item-badge ${c}">${vl(r.verdict)}</span>
+D.results.forEach((r, i) => {
+  const vInfo = getVerdictInfo(r.verdict);
+  const qMeta = r.queue_meta || {};
+  const actionText = qMeta.requested_action || r.handoff?.requested_action || r.escalation?.requested_action || 'Review referral';
+
+  let filterClasses = [];
+  if (r.verdict === 'PERMITTED') filterClasses.push('f-done');
+  if (r.verdict === 'CHILD_HANDOFF') { filterClasses.push('f-hand'); filterClasses.push('f-action'); }
+  if (r.verdict === 'RESTRICTED' || r.verdict === 'AMBIGUOUS_ESCALATE') filterClasses.push('f-action');
+
+  const row = document.createElement('div');
+  row.className = `queue-row ${filterClasses.join(' ')}`;
+  row.dataset.idx = i;
+  row.innerHTML = `
+    <div class="row-status-icon ${vInfo.color}">
+      <i data-lucide="${vInfo.icon}" style="width:13px;height:13px"></i>
+    </div>
+    <div class="row-content">
+      <div class="row-id-line">
+        <span class="row-id">${esc(r.referral_id)}</span>
+      </div>
+      <div class="row-action">${esc(actionText)}</div>
+      <span class="row-tag ${vInfo.color}">${esc(vInfo.label)}</span>
     </div>
   `;
-  el.addEventListener('click',()=>open(i));
-  list.appendChild(el);
+  row.addEventListener('click', () => selectReferral(i));
+  qListEl.appendChild(row);
 });
 
-/* ── trace step class ──────────────────────────────────── */
-function tclass(step){
-  if(step==='referral_read')                 return 't-read';
-  if(['history_fetched','triage_drafted',
-      'action_permitted'].includes(step))    return 't-ok';
-  if(['action_blocked',
-      'escalation_created'].includes(step))  return 't-block';
-  if(['child_handoff_detected',
-      'handoff_created'].includes(step))     return 't-handoff';
-  if(['approval_requested',
-      'policy_evaluated'].includes(step))    return 't-warn';
-  if(step==='processing_continued')          return 't-cont';
-  return '';
-}
+/* ── Filter Tab Handling ─────────────────────────────────── */
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const f = tab.dataset.filter;
 
-/* ── detail view ───────────────────────────────────────── */
-function open(idx){
-  // Highlight
-  document.querySelectorAll('.item').forEach(el=>{
-    el.classList.toggle('active', +el.dataset.idx===idx);
+    document.querySelectorAll('.queue-row').forEach(row => {
+      if (f === 'all') {
+        row.classList.remove('hidden');
+      } else if (f === 'action') {
+        row.classList.toggle('hidden', !row.classList.contains('f-action'));
+      } else if (f === 'done') {
+        row.classList.toggle('hidden', !row.classList.contains('f-done'));
+      } else if (f === 'hand') {
+        row.classList.toggle('hidden', !row.classList.contains('f-hand'));
+      }
+    });
+
+    // If current selected item is hidden, select first visible
+    const visible = document.querySelector('.queue-row:not(.hidden)');
+    if (visible) {
+      const idx = parseInt(visible.dataset.idx, 10);
+      selectReferral(idx);
+    }
+  });
+});
+
+/* ── Audit Step Meta ─────────────────────────────────────── */
+const STEP_META = {
+  referral_read:          { label: 'Referral received', icon: 'file-text', node: 'read' },
+  history_fetched:        { label: 'Resident history retrieved', icon: 'history', node: 'ok' },
+  policy_evaluated:       { label: 'Authority policy evaluated', icon: 'shield-check', node: 'ok' },
+  triage_drafted:         { label: 'Triage note drafted', icon: 'file-check', node: 'ok' },
+  action_permitted:       { label: 'Action permitted (§2)', icon: 'check-circle-2', node: 'ok' },
+  action_blocked:         { label: 'Action blocked (not permitted)', icon: 'lock-keyhole', node: 'blocked' },
+  escalation_created:     { label: 'Escalation record created', icon: 'alert-triangle', node: 'blocked' },
+  approval_requested:     { label: 'Approval requested', icon: 'clock-3', node: 'warn' },
+  child_handoff_detected: { label: 'Child household detected (§3.9)', icon: 'user-round-check', node: 'handoff' },
+  handoff_created:        { label: 'Handoff record created', icon: 'user-round-check', node: 'handoff' },
+  processing_continued:   { label: 'Processing continued', icon: 'arrow-right', node: 'cont' },
+  error:                  { label: 'Error occurred', icon: 'alert-circle', node: 'blocked' }
+};
+
+/* ── Render Selected Referral Detail ─────────────────────── */
+function selectReferral(idx) {
+  currentSelectedIndex = idx;
+  document.querySelectorAll('.queue-row').forEach(row => {
+    row.classList.toggle('selected', parseInt(row.dataset.idx, 10) === idx);
   });
 
-  const r  = D.results[idx];
-  const c  = vc(r.verdict);
-  const tn = r.triage_note||null;
-  const h  = r.handoff||null;
-  const esc_rec = r.escalation||null;
-  const appr    = r.approval_request||null;
-  const steps   = traceMap[r.referral_id]||[];
+  const r = D.results[idx];
+  if (!r) return;
+
+  const q = r.queue_meta || {};
+  const h = r.history_meta || {};
+  const vInfo = getVerdictInfo(r.verdict);
+  const actionText = q.requested_action || r.handoff?.requested_action || r.escalation?.requested_action || 'Review referral';
+
+  // Find applicant name
+  const household = h.household || [];
+  const applicant = household.find(m => (m.relationship || '').toLowerCase().includes('applicant')) || household[0] || {};
+  const applicantName = applicant.name || 'Resident';
 
   let html = '';
 
-  /* Header */
+  /* 1. Header */
   html += `
-    <div class="dh">
-      <div class="dh-icon ${c}">${vi(r.verdict)}</div>
-      <div class="dh-text">
-        <h2>${r.referral_id}</h2>
-        <div class="meta">${r.resident_ref} &nbsp;·&nbsp; ${vl(r.verdict)}</div>
+    <div class="case-header-block">
+      <div class="case-meta-line">
+        <strong>${esc(r.referral_id)}</strong>
+        <span>·</span>
+        <span>${esc(r.resident_ref)}</span>
+        <span>·</span>
+        <span>Urgency: <strong>${esc(q.urgency || 'Standard')}</strong></span>
+      </div>
+      <div class="case-title">${esc(actionText)}</div>
+      <div class="case-subtitle">Resident: ${esc(applicantName)} (${esc(r.resident_ref)}) · District: ${esc(h.district || 'N/A')}</div>
+    </div>
+  `;
+
+  /* 2. Semantic Decision Banner (Clean & Compact) */
+  if (r.verdict === 'AMBIGUOUS_ESCALATE') {
+    const sections = r.escalation?.triggered_sections?.map(s => '§' + s).join(', ') || '§6.1';
+    html += `
+      <div class="decision-banner amber">
+        <div class="banner-top">
+          <div class="banner-heading-wrap">
+            <i data-lucide="alert-triangle" style="width:16px;height:16px"></i>
+            <span>Needs supervisor review</span>
+          </div>
+          <span class="banner-badge">Ambiguous — Escalated · ${esc(sections)}</span>
+        </div>
+        <div class="banner-message">
+          Action "${esc(actionText)}" is not explicitly permitted under §2. Per §6.1, unclear actions are treated as though they fall within §3.
+        </div>
+        <div class="banner-action-bar">
+          <span class="badge-no-action">The agent did not perform the action.</span>
+          <span class="policy-chip amber"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
+          <span class="policy-chip amber"><i data-lucide="shield-check" style="width:11px;height:11px"></i> Policy §6.1</span>
+        </div>
+      </div>
+    `;
+  } else if (r.verdict === 'RESTRICTED') {
+    const sections = r.escalation?.triggered_sections?.map(s => '§' + s).join(', ') || '§3';
+    html += `
+      <div class="decision-banner red">
+        <div class="banner-top">
+          <div class="banner-heading-wrap">
+            <i data-lucide="lock-keyhole" style="width:16px;height:16px"></i>
+            <span>Action blocked — ${esc(sections)}</span>
+          </div>
+          <span class="banner-badge">Restricted · Approval Required</span>
+        </div>
+        <div class="banner-message">
+          "${esc(actionText)}" requires supervisor approval under authority policy. ${esc(r.escalation?.reasoning || '')}
+        </div>
+        <div class="banner-action-bar">
+          <span class="badge-no-action">The agent did not perform the action.</span>
+          <span class="policy-chip red"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
+          ${r.escalation?.triggered_sections?.map(s => `<span class="policy-chip red"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §${esc(s)}</span>`).join('') || ''}
+        </div>
+      </div>
+    `;
+  } else if (r.verdict === 'CHILD_HANDOFF') {
+    html += `
+      <div class="decision-banner violet">
+        <div class="banner-top">
+          <div class="banner-heading-wrap">
+            <i data-lucide="user-round-check" style="width:16px;height:16px"></i>
+            <span>Human handoff required</span>
+          </div>
+          <span class="banner-badge">ACA-2026/2 §3.9 Safeguarding</span>
+        </div>
+        <div class="banner-message">
+          Household includes a person under 18. Automated triage drafting is disabled for this referral under ACA-2026/2 §3.9. This is ordinary casework that a human caseworker must handle.
+        </div>
+        <div class="banner-action-bar">
+          <span class="badge-no-action">Triage note: NOT GENERATED</span>
+          <span class="badge-no-action">Next: Caseworker review</span>
+        </div>
+      </div>
+    `;
+  } else if (r.verdict === 'PERMITTED') {
+    html += `
+      <div class="decision-banner green">
+        <div class="banner-top">
+          <div class="banner-heading-wrap">
+            <i data-lucide="check-circle-2" style="width:16px;height:16px"></i>
+            <span>Action permitted — within §2</span>
+          </div>
+          <span class="banner-badge">Completed · Proposal Drafted</span>
+        </div>
+        <div class="banner-message">
+          Action "${esc(actionText)}" falls within delegated assistant authority under §2. Automated triage draft prepared for caseworker review.
+        </div>
+      </div>
+    `;
+  }
+
+  /* 3. 3-Card Information Grid (Resident | Situation | Referral) */
+  html += `
+    <div class="info-grid">
+      <!-- RESIDENT -->
+      <div class="clean-card">
+        <div class="clean-card-header">
+          <i data-lucide="user" style="width:12px;height:12px"></i>
+          <span>Resident</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="kv-list">
+            <div class="kv-item"><span class="kv-label">Name</span><span class="kv-value">${esc(applicantName)}</span></div>
+            <div class="kv-item"><span class="kv-label">Resident ID</span><span class="kv-value">${esc(r.resident_ref)}</span></div>
+            <div class="kv-item"><span class="kv-label">District</span><span class="kv-value">${esc(h.district || 'N/A')}</span></div>
+            <div class="kv-item"><span class="kv-label">Status</span><span class="kv-value">${esc(h.status || 'Active')}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SITUATION -->
+      <div class="clean-card">
+        <div class="clean-card-header">
+          <i data-lucide="layers" style="width:12px;height:12px"></i>
+          <span>Situation</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="kv-list">
+            <div class="kv-item"><span class="kv-label">Benefit Code</span><span class="kv-value">${esc(h.benefit_code || 'N/A')}</span></div>
+            <div class="kv-item"><span class="kv-label">Monthly Award</span><span class="kv-value">£${Number(h.award_monthly || 0).toFixed(2)}</span></div>
+            <div class="kv-item"><span class="kv-label">Household Size</span><span class="kv-value">${household.length} member${household.length === 1 ? '' : 's'}</span></div>
+            <div class="kv-item"><span class="kv-label">Case Events</span><span class="kv-value">${h.events_count || 0} on record</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- REFERRAL -->
+      <div class="clean-card">
+        <div class="clean-card-header">
+          <i data-lucide="file-text" style="width:12px;height:12px"></i>
+          <span>Referral</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="kv-list">
+            <div class="kv-item"><span class="kv-label">Received</span><span class="kv-value">${formatDate(q.received_at)}</span></div>
+            <div class="kv-item"><span class="kv-label">Source</span><span class="kv-value">${esc(q.source || 'Direct')}</span></div>
+            <div class="kv-item"><span class="kv-label">Urgency</span><span class="kv-value">${esc(q.urgency || 'Standard')}</span></div>
+            <div class="kv-item"><span class="kv-label">Summary</span><span class="kv-value muted">${esc(q.summary || 'No summary provided.')}</span></div>
+          </div>
+        </div>
       </div>
     </div>
   `;
 
-  /* ── CHILD HANDOFF ─────────────────────────────────── */
-  if(r.verdict==='CHILD_HANDOFF' && h){
-    html += `
-      <div class="alert purple">
-        <div class="alert-title">👶 Child Household — ACA-2026/2 §3.9</div>
-        <div class="alert-body">${esc(h.reason)}</div>
+  /* 4. Decision & Authority Highlight Section */
+  html += `<div class="action-grid">`;
+
+  // Left: Decision & Authority Card
+  let authorityHeaderColor = vInfo.color;
+  let authorityVerdictText = vInfo.label.toUpperCase();
+  let authorityStatusText = 'No supervisor approval needed';
+  let guardrailText = 'Triage proposal generated for review';
+
+  if (r.verdict === 'RESTRICTED') {
+    const sec = r.escalation?.triggered_sections?.map(s => '§' + s).join(', ') || '§3';
+    authorityStatusText = `Supervisor approval required (${sec})`;
+    guardrailText = 'The agent did not perform the action.';
+  } else if (r.verdict === 'AMBIGUOUS_ESCALATE') {
+    authorityStatusText = 'Supervisor determination required (§6.1)';
+    guardrailText = 'The agent did not perform the action.';
+  } else if (r.verdict === 'CHILD_HANDOFF') {
+    authorityStatusText = 'Human caseworker handoff required (§3.9)';
+    guardrailText = 'Triage drafting prevented — no note generated.';
+  }
+
+  html += `
+    <div class="clean-card authority-highlight-card">
+      <div class="clean-card-header">
+        <i data-lucide="shield-check" style="width:12px;height:12px;color:var(--${authorityHeaderColor})"></i>
+        <span>Decision &amp; Authority</span>
       </div>
+      <div class="clean-card-body">
+        <div class="kv-list">
+          <div class="kv-item">
+            <span class="kv-label">Authority Determination</span>
+            <span class="kv-value" style="color:var(--${authorityHeaderColor});font-size:13.5px;">${esc(authorityVerdictText)}</span>
+          </div>
+          <div class="kv-item">
+            <span class="kv-label">Requirement</span>
+            <span class="kv-value">${esc(authorityStatusText)}</span>
+          </div>
+          <div class="guardrail-box">
+            <div class="guardrail-label">Execution Guardrail</div>
+            <div class="guardrail-statement">${esc(guardrailText)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Right: Next Steps Card
+  html += `
+    <div class="clean-card">
+      <div class="clean-card-header">
+        <i data-lucide="arrow-up-right" style="width:12px;height:12px"></i>
+        <span>Next Steps</span>
+      </div>
+      <div class="clean-card-body">
+        <div class="steps-list">
+  `;
+
+  if (r.verdict === 'RESTRICTED' || r.verdict === 'AMBIGUOUS_ESCALATE') {
+    html += `
+      <div class="step-item"><span class="step-num">1</span><span>Escalated to supervisor for determination.</span></div>
+      <div class="step-item"><span class="step-num">2</span><span>Do not act until supervisor approval is received.</span></div>
+      <div class="step-item"><span class="step-num">3</span><span>Follow supervisor decision recorded in audit record.</span></div>
     `;
-
-    /* Minors */
-    const minorRows = (h.minors_identified||[]).map(m=>`
-      <div class="check-row">
-        <div class="ck pass">👶</div>
-        <span>${esc(m.name)} &nbsp;<span style="color:var(--text-dim)">age ${m.age_on_referral_date} · ${esc(m.relationship)}</span></span>
-      </div>
-    `).join('');
-
+  } else if (r.verdict === 'CHILD_HANDOFF') {
     html += `
-      <div class="card">
-        <div class="card-head">Minors Identified in Household</div>
-        <div class="card-body"><div class="checklist">${minorRows}</div></div>
-      </div>
+      <div class="step-item"><span class="step-num">1</span><span>Refer case directly to a human caseworker.</span></div>
+      <div class="step-item"><span class="step-num">2</span><span>Review preserved resident history and safeguarding facts.</span></div>
+      <div class="step-item"><span class="step-num">3</span><span>Caseworker conducts full manual assessment.</span></div>
     `;
-
-    /* What was NOT generated */
+  } else {
     html += `
-      <div class="card">
-        <div class="card-head">Triage Note</div>
-        <div class="card-body">
-          <div class="checklist">
-            <div class="check-row"><div class="ck skip">✕</div><span style="color:var(--text-dim)">Not generated — §2.2 of ACA-2026/2 prohibits drafting a triage note for this case</span></div>
+      <div class="step-item"><span class="step-num">1</span><span>Caseworker reviews drafted triage proposal.</span></div>
+      <div class="step-item"><span class="step-num">2</span><span>Verify resident history and factual situation.</span></div>
+      <div class="step-item"><span class="step-num">3</span><span>Proceed with permitted administrative next steps.</span></div>
+    `;
+  }
+
+  html += `
+        </div>
+      </div>
+    </div>
+  </div>
+  `;
+
+  /* 5. Specific Content Cards (Context / Triage Note / Work Gathered) */
+  if (r.verdict === 'CHILD_HANDOFF' && r.handoff) {
+    const minors = r.handoff.minors_identified || [];
+    html += `
+      <div class="clean-card" style="margin-bottom:14px">
+        <div class="clean-card-header">
+          <i data-lucide="user-round-check" style="width:12px;height:12px;color:var(--violet)"></i>
+          <span>Child Safeguarding Review — Minors Identified</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="checklist-box">
+            ${minors.map(m => `
+              <div class="checklist-item">
+                <div class="check-bullet lav"><i data-lucide="user" style="width:10px;height:10px"></i></div>
+                <span><strong>${esc(m.name)}</strong> (${esc(m.relationship)}) — Age ${m.age_on_referral_date !== null ? m.age_on_referral_date : 'Under 18 (DOB ' + esc(m.date_of_birth) + ')'}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+            Per ACA-2026/2 §5.1, child presence is determined from Department household records.
           </div>
         </div>
       </div>
     `;
 
-    /* Work gathered */
     html += `
-      <div class="card">
-        <div class="card-head">Work Already Gathered (passed to caseworker)</div>
-        <div class="card-body"><pre>${esc(h.work_already_done)}</pre></div>
-      </div>
-    `;
-
-    /* Next step */
-    html += `
-      <div class="alert green">
-        <div class="alert-title">Next Step</div>
-        <div class="alert-body">Human caseworker handles this referral. Work above has been preserved so the caseworker does not repeat it (ACA-2026/2 §3.2).</div>
+      <div class="clean-card" style="margin-bottom:14px">
+        <div class="clean-card-header">
+          <i data-lucide="folder-check" style="width:12px;height:12px"></i>
+          <span>Work Gathered (Preserved for Caseworker per §3.2)</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="checklist-box">
+            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Referral read &amp; logged</span></div>
+            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Resident history retrieved from database</span></div>
+            <div class="checklist-item"><div class="check-bullet ok"><i data-lucide="check" style="width:10px;height:10px"></i></div><span>Household composition verified</span></div>
+            <div class="checklist-item"><div class="check-bullet no"><i data-lucide="x" style="width:10px;height:10px"></i></div><span>Triage note: NOT GENERATED (§2.2 ACA-2026/2 prohibits draft note)</span></div>
+          </div>
+          <div class="context-box-text" style="margin-top:8px">${esc(r.handoff.work_already_done)}</div>
+        </div>
       </div>
     `;
   }
 
-  /* ── RESTRICTED / AMBIGUOUS ────────────────────────── */
-  if(r.verdict==='RESTRICTED' || r.verdict==='AMBIGUOUS_ESCALATE'){
-    const acol = r.verdict==='RESTRICTED' ? 'red' : 'amber';
-    const secs = esc_rec ? esc_rec.triggered_sections.map(s=>'§'+s).join(', ') : '';
+  if (r.escalation?.context_summary) {
     html += `
-      <div class="alert ${acol}">
-        <div class="alert-title">${r.verdict==='RESTRICTED'?'🔒 Action Blocked':'⚠ Ambiguous — Escalated'} ${secs ? '— '+secs : ''}</div>
-        <div class="alert-body">${esc((esc_rec||{}).reasoning||'')}</div>
+      <div class="clean-card" style="margin-bottom:14px">
+        <div class="clean-card-header">
+          <i data-lucide="user-check" style="width:12px;height:12px"></i>
+          <span>Context for Supervisor Determination (§4.2)</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="context-box-text">${esc(r.escalation.context_summary)}</div>
+        </div>
       </div>
     `;
-    if(appr){
-      html += `<div class="approval">⏳ ${appr.status.replace('_',' ')}</div>`;
-    }
-    if(esc_rec){
-      const tags = esc_rec.triggered_sections.map(s=>`<span class="ptag">§${esc(s)}</span>`).join('');
-      html += `
-        <div class="card">
-          <div class="card-head">Policy Sections</div>
-          <div class="card-body"><div class="policy-tags">${tags}</div></div>
+  }
+
+  if (r.triage_note) {
+    const tn = r.triage_note;
+    html += `
+      <div class="clean-card" style="margin-bottom:14px">
+        <div class="clean-card-header">
+          <i data-lucide="file-check" style="width:12px;height:12px"></i>
+          <span>Drafted Triage Proposal (§2.4 — Caseworker Review)</span>
+        </div>
+        <div class="clean-card-body">
+          <div class="kv-list">
+            ${tn.situation_summary ? `<div class="kv-item"><span class="kv-label">Situation Summary</span><div class="context-box-text">${esc(tn.situation_summary)}</div></div>` : ''}
+            ${tn.referral_context ? `<div class="kv-item" style="margin-top:4px"><span class="kv-label">Referral Context</span><div class="context-box-text">${esc(tn.referral_context)}</div></div>` : ''}
+            ${tn.relevant_history ? `<div class="kv-item" style="margin-top:4px"><span class="kv-label">Relevant History</span><div class="context-box-text">${esc(tn.relevant_history)}</div></div>` : ''}
+            ${tn.recommended_next_steps ? `<div class="kv-item" style="margin-top:4px"><span class="kv-label">Recommended Next Steps</span><div class="context-box-text">${esc(tn.recommended_next_steps)}</div></div>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  /* 6. Execution History / Audit Timeline */
+  const steps = traceMap[r.referral_id] || [];
+  if (steps.length > 0) {
+    const timelineItems = steps.map(step => {
+      const meta = STEP_META[step.step] || { label: step.step, icon: 'circle', node: 'cont' };
+      return `
+        <div class="tl-item">
+          <div class="tl-node ${meta.node}"></div>
+          <div class="tl-header-row">
+            <span class="tl-title">${esc(meta.label)}</span>
+            <span class="tl-timestamp">${formatTime(step.timestamp)}</span>
+          </div>
+          <div class="tl-desc">${esc(step.detail)}</div>
         </div>
       `;
-    }
-  }
+    }).join('');
 
-  /* ── PERMITTED ─────────────────────────────────────── */
-  if(r.verdict==='PERMITTED'){
     html += `
-      <div class="alert green">
-        <div class="alert-title">✓ Action Permitted — within §2</div>
-        <div class="alert-body">Triage note has been drafted for caseworker review.</div>
+      <div class="trace-card">
+        <div class="trace-card-header">
+          <div class="trace-heading">
+            <i data-lucide="history" style="width:13px;height:13px"></i>
+            <span>Execution History</span>
+          </div>
+          <button class="btn-trace-toggle" onclick="document.getElementById('raw-trace-${esc(r.referral_id)}').classList.toggle('open')">
+            <i data-lucide="code" style="width:11px;height:11px"></i>
+            <span>View full trace</span>
+          </button>
+        </div>
+        <div class="timeline-body">
+          <div class="audit-timeline">
+            ${timelineItems}
+          </div>
+        </div>
+        <div class="json-trace-drawer" id="raw-trace-${esc(r.referral_id)}">
+          <pre>${esc(JSON.stringify(steps, null, 2))}</pre>
+        </div>
       </div>
     `;
   }
 
-  /* Triage note sections (only if present) */
-  if(tn){
-    if(tn.situation_summary){
-      html += `<div class="card"><div class="card-head">Situation</div><div class="card-body"><pre>${esc(tn.situation_summary)}</pre></div></div>`;
-    }
-    if(tn.referral_context){
-      html += `<div class="card"><div class="card-head">Referral</div><div class="card-body"><pre>${esc(tn.referral_context)}</pre></div></div>`;
-    }
-    if(tn.relevant_history){
-      html += `<div class="card"><div class="card-head">Relevant History</div><div class="card-body"><pre>${esc(tn.relevant_history)}</pre></div></div>`;
-    }
-    if(tn.recommended_next_steps){
-      html += `<div class="card"><div class="card-head">Recommended Next Steps</div><div class="card-body"><pre>${esc(tn.recommended_next_steps)}</pre></div></div>`;
-    }
-  }
-
-  /* Escalation context */
-  if(esc_rec && esc_rec.context_summary){
-    html += `<div class="card"><div class="card-head">Supervisor Context</div><div class="card-body"><pre>${esc(esc_rec.context_summary)}</pre></div></div>`;
-  }
-
-  /* Execution trace */
-  if(steps.length){
-    const rows = steps.map(t=>`
-      <div class="trow ${tclass(t.step)}">
-        <span class="step-name">${esc(t.step)}</span>
-        <span class="step-detail">— ${esc(t.detail)}</span>
-        <span class="step-ts">${t.timestamp}</span>
-      </div>
-    `).join('');
-    html += `
-      <div class="card">
-        <div class="card-head">Execution Trace</div>
-        <div class="card-body"><div class="timeline">${rows}</div></div>
-      </div>
-    `;
-  }
-
-  document.getElementById('detail').innerHTML = html;
-  document.getElementById('detail').scrollTop = 0;
+  const detailEl = document.getElementById('detail-panel');
+  detailEl.innerHTML = html;
+  detailEl.scrollTop = 0;
+  lucide.createIcons();
 }
+
+/* ── Initialize with First Actionable Referral ────────────── */
+window.addEventListener('DOMContentLoaded', () => {
+  lucide.createIcons();
+  // Default to first item matching 'Needs action' (or index 0)
+  const defaultRow = document.querySelector('.queue-row.f-action') || document.querySelector('.queue-row');
+  if (defaultRow) {
+    selectReferral(parseInt(defaultRow.dataset.idx, 10));
+  }
+});
 </script>
 </body>
 </html>"""
