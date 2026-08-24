@@ -1169,8 +1169,8 @@ function selectReferral(idx) {
         </div>
         ${r.escalation?.reasoning ? `
           <div style="margin-top:8px;">
-            <button style="background:transparent;border:none;color:var(--amber);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';this.querySelector('.arrow-icon').style.transform=isOp?'':'rotate(90deg)';">
-              <span class="arrow-icon" style="transition:transform .15s;display:inline-block;">▸</span>
+            <button style="background:transparent;border:none;color:var(--amber);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';const ic=this.querySelector('.arrow-icon');if(ic)ic.style.transform=isOp?'':'rotate(90deg)';">
+              <i data-lucide="chevron-right" class="arrow-icon" style="width:12px;height:12px;transition:transform .15s;display:inline-block;"></i>
               <span>Why was this escalated?</span>
             </button>
             <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--amber-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
@@ -1201,8 +1201,8 @@ function selectReferral(idx) {
         </div>
         ${r.escalation?.reasoning ? `
           <div style="margin-top:8px;">
-            <button style="background:transparent;border:none;color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';this.querySelector('.arrow-icon').style.transform=isOp?'':'rotate(90deg)';">
-              <span class="arrow-icon" style="transition:transform .15s;display:inline-block;">▸</span>
+            <button style="background:transparent;border:none;color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';const ic=this.querySelector('.arrow-icon');if(ic)ic.style.transform=isOp?'':'rotate(90deg)';">
+              <i data-lucide="chevron-right" class="arrow-icon" style="width:12px;height:12px;transition:transform .15s;display:inline-block;"></i>
               <span>Why was this blocked?</span>
             </button>
             <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--red-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
