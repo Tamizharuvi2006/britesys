@@ -958,11 +958,11 @@ function formatDate(isoStr) {
 function getVerdictInfo(verdict) {
   switch(verdict) {
     case 'PERMITTED':
-      return { label: 'Completed', color: 'green', icon: 'check-circle-2' };
+      return { label: 'Completed', color: 'green', icon: 'circle-check' };
     case 'RESTRICTED':
-      return { label: 'Restricted', color: 'red', icon: 'lock-keyhole' };
+      return { label: 'Restricted', color: 'red', icon: 'shield-alert' };
     case 'AMBIGUOUS_ESCALATE':
-      return { label: 'Needs review', color: 'amber', icon: 'alert-triangle' };
+      return { label: 'Needs review', color: 'amber', icon: 'triangle-alert' };
     case 'CHILD_HANDOFF':
       return { label: 'Handoff', color: 'violet', icon: 'user-round-check' };
     default:
@@ -981,14 +981,14 @@ document.getElementById('stat-cards').innerHTML = `
     </div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-icon green"><i data-lucide="check-circle-2" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon green"><i data-lucide="circle-check" style="width:14px;height:14px"></i></div>
     <div class="stat-card-data">
       <div class="stat-card-val" style="color:var(--green)">${stats.permitted || 0}</div>
       <div class="stat-card-lbl">Completed</div>
     </div>
   </div>
   <div class="stat-card">
-    <div class="stat-card-icon red"><i data-lucide="lock-keyhole" style="width:14px;height:14px"></i></div>
+    <div class="stat-card-icon red"><i data-lucide="shield-alert" style="width:14px;height:14px"></i></div>
     <div class="stat-card-data">
       <div class="stat-card-val" style="color:var(--red)">${stats.restricted || 0}</div>
       <div class="stat-card-lbl">Restricted</div>
@@ -1087,15 +1087,15 @@ const STEP_META = {
   referral_read:          { label: 'Referral received', icon: 'file-text', node: 'read' },
   history_fetched:        { label: 'Resident history retrieved', icon: 'history', node: 'ok' },
   policy_evaluated:       { label: 'Authority policy evaluated', icon: 'shield-check', node: 'ok' },
-  triage_drafted:         { label: 'Triage note drafted', icon: 'file-check', node: 'ok' },
-  action_permitted:       { label: 'Action permitted (§2)', icon: 'check-circle-2', node: 'ok' },
-  action_blocked:         { label: 'Action blocked (not permitted)', icon: 'lock-keyhole', node: 'blocked' },
-  escalation_created:     { label: 'Escalation record created', icon: 'alert-triangle', node: 'blocked' },
+  triage_drafted:         { label: 'Triage note drafted', icon: 'file-text', node: 'ok' },
+  action_permitted:       { label: 'Action permitted (§2)', icon: 'circle-check', node: 'ok' },
+  action_blocked:         { label: 'Action blocked (not permitted)', icon: 'shield-alert', node: 'blocked' },
+  escalation_created:     { label: 'Escalation record created', icon: 'triangle-alert', node: 'blocked' },
   approval_requested:     { label: 'Approval requested', icon: 'clock-3', node: 'warn' },
   child_handoff_detected: { label: 'Child household detected (§3.9)', icon: 'user-round-check', node: 'handoff' },
   handoff_created:        { label: 'Handoff record created', icon: 'user-round-check', node: 'handoff' },
   processing_continued:   { label: 'Processing continued', icon: 'arrow-right', node: 'cont' },
-  error:                  { label: 'Error occurred', icon: 'alert-circle', node: 'blocked' }
+  error:                  { label: 'Error occurred', icon: 'shield-alert', node: 'blocked' }
 };
 
 /* ── Render Selected Referral Detail ─────────────────────── */
@@ -1135,17 +1135,29 @@ function selectReferral(idx) {
     </div>
   `;
 
-  /* 2. Semantic Decision Banner (Clean & Compact) */
+  const policyDescriptions = {
+    '3.1': 'Entitlement & award changes',
+    '3.2': 'Award changes & suspensions',
+    '3.3': 'Payment alterations',
+    '3.4': 'Bank & payment details',
+    '3.5': 'Third-party communications',
+    '3.6': 'Benefit code alterations',
+    '3.7': 'Findings of conduct / fraud',
+    '3.8': 'Case closure without review',
+    '3.9': 'Child household safeguarding',
+    '6.1': 'Unclear / Ambiguous authority'
+  };
+
+  /* 2. Semantic Decision Banner (Clean, Professional & Scannable) */
   if (r.verdict === 'AMBIGUOUS_ESCALATE') {
-    const sections = r.escalation?.triggered_sections?.map(s => '§' + s).join(', ') || '§6.1';
     html += `
       <div class="decision-banner amber">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="alert-triangle" style="width:16px;height:16px"></i>
+            <i data-lucide="triangle-alert" style="width:16px;height:16px"></i>
             <span>Needs supervisor review</span>
           </div>
-          <span class="banner-badge">Ambiguous — Escalated · ${esc(sections)}</span>
+          <span class="banner-badge">Ambiguous · Escalated</span>
         </div>
         <div class="banner-message">
           Action "${esc(actionText)}" is not explicitly permitted under §2. Per §6.1, unclear actions are treated as though they fall within §3.
@@ -1153,29 +1165,51 @@ function selectReferral(idx) {
         <div class="banner-action-bar">
           <span class="badge-no-action">The agent did not perform the action.</span>
           <span class="policy-chip amber"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
-          <span class="policy-chip amber"><i data-lucide="shield-check" style="width:11px;height:11px"></i> Policy §6.1</span>
+          <span class="policy-chip amber"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §6.1 Unclear / Ambiguous authority</span>
         </div>
+        ${r.escalation?.reasoning ? `
+          <div style="margin-top:8px;">
+            <button style="background:transparent;border:none;color:var(--amber);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';this.querySelector('.arrow-icon').style.transform=isOp?'':'rotate(90deg)';">
+              <span class="arrow-icon" style="transition:transform .15s;display:inline-block;">▸</span>
+              <span>Why was this escalated?</span>
+            </button>
+            <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--amber-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
+              ${esc(r.escalation.reasoning)}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   } else if (r.verdict === 'RESTRICTED') {
-    const sections = r.escalation?.triggered_sections?.map(s => '§' + s).join(', ') || '§3';
+    const sections = r.escalation?.triggered_sections || ['3.2'];
     html += `
       <div class="decision-banner red">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="lock-keyhole" style="width:16px;height:16px"></i>
-            <span>Action blocked — ${esc(sections)}</span>
+            <i data-lucide="shield-alert" style="width:16px;height:16px"></i>
+            <span>Action blocked</span>
           </div>
           <span class="banner-badge">Restricted · Approval Required</span>
         </div>
         <div class="banner-message">
-          "${esc(actionText)}" requires supervisor approval under authority policy. ${esc(r.escalation?.reasoning || '')}
+          This action requires supervisor approval before it can proceed under authority policy.
         </div>
         <div class="banner-action-bar">
           <span class="badge-no-action">The agent did not perform the action.</span>
           <span class="policy-chip red"><i data-lucide="clock-3" style="width:11px;height:11px"></i> Pending approval</span>
-          ${r.escalation?.triggered_sections?.map(s => `<span class="policy-chip red"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §${esc(s)}</span>`).join('') || ''}
+          ${sections.map(s => `<span class="policy-chip red"><i data-lucide="shield-check" style="width:11px;height:11px"></i> §${esc(s)} ${esc(policyDescriptions[s] || '')}</span>`).join('')}
         </div>
+        ${r.escalation?.reasoning ? `
+          <div style="margin-top:8px;">
+            <button style="background:transparent;border:none;color:var(--red);font-size:11.5px;font-weight:600;cursor:pointer;padding:0;display:inline-flex;align-items:center;gap:4px;font-family:inherit;" onclick="const d=document.getElementById('why-blocked-${esc(r.referral_id)}');const isOp=d.style.display==='block';d.style.display=isOp?'none':'block';this.querySelector('.arrow-icon').style.transform=isOp?'':'rotate(90deg)';">
+              <span class="arrow-icon" style="transition:transform .15s;display:inline-block;">▸</span>
+              <span>Why was this blocked?</span>
+            </button>
+            <div id="why-blocked-${esc(r.referral_id)}" style="display:none;margin-top:6px;padding:8px 10px;background:var(--surface);border-radius:4px;border:1px solid var(--red-bdr);font-size:12px;color:var(--text-body);line-height:1.5;">
+              ${esc(r.escalation.reasoning)}
+            </div>
+          </div>
+        ` : ''}
       </div>
     `;
   } else if (r.verdict === 'CHILD_HANDOFF') {
@@ -1202,7 +1236,7 @@ function selectReferral(idx) {
       <div class="decision-banner green">
         <div class="banner-top">
           <div class="banner-heading-wrap">
-            <i data-lucide="check-circle-2" style="width:16px;height:16px"></i>
+            <i data-lucide="circle-check" style="width:16px;height:16px"></i>
             <span>Action permitted — within §2</span>
           </div>
           <span class="banner-badge">Completed · Proposal Drafted</span>
